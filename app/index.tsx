@@ -131,7 +131,7 @@ export default function EntryScreen() {
           {/* Immersive Hero Section */}
           <View className="h-[60%] relative">
             <Image 
-              source={require('../assets/images/onboarding_3_fixed.png')} 
+              source={require('../assets/images/onboarding_3_final.jpg')} 
               className="absolute inset-0 w-full h-full"
               contentFit="cover"
               transition={1200}
