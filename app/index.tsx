@@ -129,19 +129,7 @@ export default function EntryScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Immersive Hero Section */}
-          <View className="h-[60%] relative">
-            <Image 
-              source={require('../assets/images/onboarding_3_final.jpg')} 
-              className="absolute inset-0 w-full h-full"
-              contentFit="cover"
-              transition={1200}
-            />
-            
-            {/* Multi-layered Gradients for Depth */}
-            <LinearGradient
-              colors={['rgba(14,18,32,0.2)', 'rgba(14,18,32,0.5)', '#0E1220']}
-              className="absolute inset-0"
-            />
+          <View className="h-[50%] relative justify-end">
             
             <View className="absolute bottom-0 left-0 right-0 px-10 pb-12">
               <Animated.View entering={FadeInUp.delay(300).duration(800)}>
