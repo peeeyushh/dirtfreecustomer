@@ -114,7 +114,8 @@ export default function EntryScreen() {
       <FirebaseRecaptchaVerifierModal
         ref={recaptchaVerifier}
         firebaseConfig={firebaseConfig}
-        attemptInvisibleVerification={true}
+        attemptInvisibleVerification={!__DEV__}
+        appVerificationDisabledForTesting={__DEV__}
       />
       
       <KeyboardAvoidingView
@@ -177,10 +178,11 @@ export default function EntryScreen() {
             {/* Decorative Sparkle */}
             <Animated.View 
               entering={FadeIn.delay(800)}
-              style={glowStyle}
               className="absolute top-20 right-10"
             >
-              <Sparkles size={32} color="#22C58A" />
+              <Animated.View style={glowStyle}>
+                <Sparkles size={32} color="#22C58A" />
+              </Animated.View>
             </Animated.View>
           </View>
 

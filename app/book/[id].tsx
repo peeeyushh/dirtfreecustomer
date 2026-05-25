@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { ScrollView, View, Text, Image, Pressable, Modal, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Minus, Plus, Check, CheckCircle2, ChevronRight, Calendar, Clock, CreditCard, ShieldCheck, Sparkles } from "lucide-react-native";
+import { ArrowLeft, Check, CheckCircle2, ChevronRight, Calendar, Clock, CreditCard, ShieldCheck, Sparkles } from "lucide-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SERVICES } from "../../lib/data";
 import { useLocation } from "../../context/LocationContext";
@@ -14,11 +14,44 @@ import * as Haptics from 'expo-haptics';
 import { Alert } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 
-const ADDONS = [
-  { id: "fridge", label: "Fridge interior", price: 199 },
-  { id: "balcony", label: "Balcony deep-clean", price: 149 },
-  { id: "windows", label: "Window cleaning", price: 99 },
-];
+const CATEGORY_ADDONS: Record<string, { id: string; label: string; price: number }[]> = {
+  "Cleaning": [
+    { id: "fridge", label: "Fridge interior", price: 199 },
+    { id: "balcony", label: "Balcony deep-clean", price: 149 },
+    { id: "windows", label: "Window cleaning", price: 99 },
+  ],
+  "AC Repair": [
+    { id: "piping", label: "Extra copper piping (per m)", price: 299 },
+    { id: "stand", label: "Outdoor unit stand installation", price: 399 },
+    { id: "foam", label: "Foam cleaning booster", price: 199 },
+  ],
+  "Plumbing": [
+    { id: "tape", label: "Teflon tape & washers pack", price: 49 },
+    { id: "drain", label: "Drain cleaner chemical", price: 99 },
+    { id: "coupling", label: "Sink coupling replacement", price: 149 },
+  ],
+  "Electrician": [
+    { id: "switch", label: "Modular switch replacement", price: 99 },
+    { id: "wire", label: "Anchor wire pack (10m)", price: 199 },
+    { id: "plug", label: "Heavy duty plug top (16A)", price: 149 },
+  ],
+  "Salon": [
+    { id: "facial", label: "Facial massage booster", price: 299 },
+    { id: "spa", label: "Hair spa treatment", price: 399 },
+    { id: "mask", label: "Charcoal peel-off mask", price: 149 },
+  ],
+};
+
+const getCategoryKey = (category?: string) => {
+  if (!category) return "Cleaning";
+  const normalized = category.toLowerCase().trim();
+  if (normalized.includes("clean")) return "Cleaning";
+  if (normalized.includes("ac")) return "AC Repair";
+  if (normalized.includes("plumb")) return "Plumbing";
+  if (normalized.includes("elect")) return "Electrician";
+  if (normalized.includes("salon") || normalized.includes("groom") || normalized.includes("spa")) return "Salon";
+  return "Cleaning";
+};
 
 const FREQUENCIES = [
   { id: 'one-time', label: 'One-time', visits: 1 },
@@ -47,8 +80,12 @@ export default function BookFlow() {
 
   const [step, setStep] = useState(0);
   const [frequency, setFrequency] = useState('one-time');
-  const [qty, setQty] = useState(1);
+  const qty = 1;
   const [addons, setAddons] = useState<string[]>([]);
+  const currentAddonsList = useMemo(() => {
+    const catKey = getCategoryKey(service?.category);
+    return CATEGORY_ADDONS[catKey] || CATEGORY_ADDONS["Cleaning"];
+  }, [service]);
   const [date, setDate] = useState(new Date());
   const [slot, setSlot] = useState("10:00 AM");
   const [isUrgent, setIsUrgent] = useState(false);
@@ -89,7 +126,7 @@ export default function BookFlow() {
               const subDocRef = doc(db, 'services', cat, 'services', id as string);
               const subSnap = await getDoc(subDocRef);
               if (subSnap.exists()) {
-                finalSvc = { id: subSnap.id, ...subSnap.data() };
+                finalSvc = { id: subSnap.id, category: cat, ...subSnap.data() };
                 break;
               }
             }
@@ -120,7 +157,7 @@ export default function BookFlow() {
     return d;
   }, []);
 
-  const subtotal = (service?.price || 0) * qty + addons.reduce((s, id) => s + (ADDONS.find(a => a.id === id)?.price ?? 0), 0);
+  const subtotal = (service?.price || 0) * qty + addons.reduce((s, id) => s + (currentAddonsList.find(a => a.id === id)?.price ?? 0), 0);
   const urgentAmount = isUrgent ? URGENT_FEE : 0;
   const billSubtotal = subtotal + urgentAmount + FIXED_SERVICE_FEE;
   const gstAmount = billSubtotal * (gstPercent / 100);
@@ -267,25 +304,10 @@ export default function BookFlow() {
               ))}
             </View>
 
-            <Text className="text-[14px] font-bold text-fg mb-3 ml-1">Number of Sessions</Text>
-            <View className="flex-row items-center justify-between bg-white rounded-3xl px-6 py-4 mb-8" style={LUMEN_SHADOW}>
-              <View>
-                <Text className="text-[15px] font-bold text-fg">Total Sessions</Text>
-                <Text className="text-[11px] text-blue-600 font-bold">1 Session = 30 Minutes</Text>
-              </View>
-              <View className="flex-row items-center gap-5">
-                <Pressable onPress={() => setQty(Math.max(1, qty - 1))} className="h-10 w-10 rounded-full bg-gray-50 items-center justify-center">
-                  <Minus size={16} color="#0E1220" />
-                </Pressable>
-                <Text className="text-[18px] font-bold text-fg w-6 text-center">{qty}</Text>
-                <Pressable onPress={() => setQty(qty + 1)} className="h-10 w-10 rounded-full bg-fg items-center justify-center">
-                  <Plus size={16} color="#fff" />
-                </Pressable>
-              </View>
-            </View>
+
 
             <Text className="text-[14px] font-bold text-fg mb-3 ml-1">Add-ons</Text>
-            {ADDONS.map((a) => {
+            {currentAddonsList.map((a) => {
               const on = addons.includes(a.id);
               return (
                 <Pressable 
@@ -451,6 +473,22 @@ export default function BookFlow() {
 
             <Text className="text-[14px] font-bold text-fg mb-4 ml-1">Payment Summary</Text>
             <View className="bg-white rounded-[32px] p-6 mb-8" style={LUMEN_SHADOW}>
+              <Row label="Base Price" value={`₹${(service?.price || 0) * qty}`} />
+              
+              {addons.map(addonId => {
+                const addOnItem = currentAddonsList.find(a => a.id === addonId);
+                if (!addOnItem) return null;
+                return (
+                  <Row 
+                    key={addonId} 
+                    label={`+ ${addOnItem.label}`} 
+                    value={`₹${addOnItem.price}`} 
+                    color="#22C58A"
+                  />
+                );
+              })}
+              
+              <View className="h-px bg-gray-100 my-3" />
               <Row label="Item Total" value={`₹${subtotal}`} />
               <Row label="Service Fee" value={`₹${FIXED_SERVICE_FEE}`} />
               {isUrgent && <Row label="Urgent Handling" value={`₹${URGENT_FEE}`} color="#EA580C" />}

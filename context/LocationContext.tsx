@@ -264,19 +264,21 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      let currentLocation;
-      try {
-        currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-          timeout: 5000
-        });
-      } catch (gpsError) {
-        console.log('GPS failed, using fallback:', gpsError);
-        // If GPS hardware fails, use Indore as fallback
-        currentLocation = {
-          coords: { latitude: 22.7196, longitude: 75.8577, accuracy: 10, altitude: 0, heading: 0, speed: 0 },
-          timestamp: Date.now()
-        } as Location.LocationObject;
+      let currentLocation = await Location.getLastKnownPositionAsync({});
+      if (!currentLocation) {
+        try {
+          currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+            timeout: 5000
+          });
+        } catch (gpsError) {
+          console.log('GPS failed, using fallback:', gpsError);
+          // If GPS hardware fails, use Indore as fallback
+          currentLocation = {
+            coords: { latitude: 22.7196, longitude: 75.8577, accuracy: 10, altitude: 0, heading: 0, speed: 0 },
+            timestamp: Date.now()
+          } as Location.LocationObject;
+        }
       }
 
       setLocation(currentLocation);

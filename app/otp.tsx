@@ -37,7 +37,7 @@ export default function OtpScreen() {
   const phone = params.phone as string;
   const verificationId = params.verificationId as string;
   const insets = useSafeAreaInsets();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
 
   const [step, setStep] = useState<'otp' | 'verified'>('otp');
   const [isVerifying, setIsVerifying] = useState(false);

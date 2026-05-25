@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { initializeAuth, getAuth, Auth, getReactNativePersistence } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentSingleTabManager } from "firebase/firestore";
@@ -25,9 +26,9 @@ try {
   auth = getAuth(app);
 }
 
-const db = initializeFirestore(app, {
+const db = initializeFirestore(app, Platform.OS === 'web' ? {
   localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
-});
+} : {});
 
 export { app, auth, db };
 export default app;

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 const LUMEN_SHADOW = {
@@ -254,6 +254,29 @@ function ChatModal({ visible, onClose, booking }: any) {
   );
 }
 
+const ALL_ADDONS_LOOKUP: Record<string, { label: string; price: number }> = {
+  // Cleaning
+  fridge: { label: "Fridge interior", price: 199 },
+  balcony: { label: "Balcony deep-clean", price: 149 },
+  windows: { label: "Window cleaning", price: 99 },
+  // AC Repair
+  piping: { label: "Extra copper piping (per m)", price: 299 },
+  stand: { label: "Outdoor unit stand installation", price: 399 },
+  foam: { label: "Foam cleaning booster", price: 199 },
+  // Plumbing
+  tape: { label: "Teflon tape & washers pack", price: 49 },
+  drain: { label: "Drain cleaner chemical", price: 99 },
+  coupling: { label: "Sink coupling replacement", price: 149 },
+  // Electrician
+  switch: { label: "Modular switch replacement", price: 99 },
+  wire: { label: "Anchor wire pack (10m)", price: 199 },
+  plug: { label: "Heavy duty plug top (16A)", price: 149 },
+  // Salon
+  facial: { label: "Facial massage booster", price: 299 },
+  spa: { label: "Hair spa treatment", price: 399 },
+  mask: { label: "Charcoal peel-off mask", price: 149 },
+};
+
 function BookingCard({ booking, index, onOpenChat }: any) {
   const [expanded, setExpanded] = useState(index === 0);
   const statusStr = (booking?.status || '').toLowerCase();
@@ -285,6 +308,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
 
   const displayDate = formatDisplayDate(rawDate);
   const displayPrice = booking?.price || booking?.totalPrice || '0';
+  const selectedAddons = booking?.items?.[0]?.addons || [];
 
   return (
     <View className="mb-6">
@@ -340,6 +364,23 @@ function BookingCard({ booking, index, onOpenChat }: any) {
 
         {expanded && (
           <Animated.View entering={FadeInDown.duration(400)} className="px-4 pb-6">
+            {/* Selected Add-ons Section */}
+            {selectedAddons && selectedAddons.length > 0 && (
+              <View className="mb-5 bg-gray-50 rounded-[28px] p-5 border border-gray-100">
+                <Text className="text-[12px] font-bold text-black/40 uppercase tracking-widest mb-3">Included Add-ons</Text>
+                {selectedAddons.map((addonId: string) => {
+                  const addonInfo = ALL_ADDONS_LOOKUP[addonId];
+                  if (!addonInfo) return null;
+                  return (
+                    <View key={addonId} className="flex-row justify-between items-center py-1">
+                      <Text className="text-[13px] text-black font-semibold">• {addonInfo.label}</Text>
+                      <Text className="text-[13px] text-success font-bold">+₹{addonInfo.price}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
             {!isCancelled && (
               <View className="flex-row justify-between items-start my-6">
                 <Step 
@@ -391,12 +432,35 @@ function BookingCard({ booking, index, onOpenChat }: any) {
                       <MessageSquare size={18} color="#000" />
                     </Pressable>
                     <Pressable 
-                      onPress={() => {
-                        if (booking.workerPhone) {
-                          Linking.openURL(`tel:${booking.workerPhone}`);
-                        } else {
-                          alert("Phone number not available");
+                      onPress={async () => {
+                        const tryCall = (phone: string) => {
+                          const cleanPhone = String(phone).replace(/[^0-9+]/g, '');
+                          if (!cleanPhone) return false;
+                          Linking.openURL(`tel:${cleanPhone}`).catch(err => {
+                            console.error("Failed to open dialer:", err);
+                            alert("Could not open dialer app");
+                          });
+                          return true;
+                        };
+
+                        // Try booking-level phone first
+                        if (booking.workerPhone && tryCall(booking.workerPhone)) return;
+
+                        // Fallback: fetch from partners collection
+                        if (booking.workerId) {
+                          try {
+                            const partnerDoc = await getDoc(doc(db, 'partners', booking.workerId));
+                            if (partnerDoc.exists()) {
+                              const partnerData = partnerDoc.data();
+                              const phone = partnerData?.phone || partnerData?.phoneNumber || '';
+                              if (phone && tryCall(phone)) return;
+                            }
+                          } catch (err) {
+                            console.error("Failed to fetch partner phone:", err);
+                          }
                         }
+
+                        alert("Phone number not available");
                       }}
                       className="h-10 w-10 rounded-full bg-black items-center justify-center shadow-sm"
                     >

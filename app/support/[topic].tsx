@@ -8,7 +8,8 @@ import { db } from '../../lib/firebase';
 import ShimmerLoader from '../../components/ShimmerLoader';
 import { StatusBar } from 'expo-status-bar';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+const isNewArch = typeof global !== 'undefined' && ((global as any).RN$Bridgeless || (global as any).nativeFabricUIManager);
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !isNewArch) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
