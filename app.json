@@ -1,22 +1,32 @@
 {
   "expo": {
-    "name": "snapit",
-    "slug": "snapit",
+    "name": "DirtFree",
+    "slug": "dirtfree",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "snapit",
+    "scheme": "dirtfree",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "AIzaSyAzldmrYTRZptkS4fqCuAE4Ej--qImD8V0"
+      }
     },
     "android": {
+      "package": "com.dirtfree.dirtfree",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAzldmrYTRZptkS4fqCuAE4Ej--qImD8V0"
+        }
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -38,11 +48,18 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "583b8373-3079-4278-ab76-f01778c08f3d"
+      }
     }
   }
 }
