@@ -11,6 +11,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { LocationProvider } from '../context/LocationContext';
 import { AlertProvider } from '../context/AlertContext';
+import GlobalNotificationListener from '../components/GlobalNotificationListener';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -29,6 +30,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
+        <GlobalNotificationListener />
         <AlertProvider>
           <LocationProvider>
             <CartProvider>

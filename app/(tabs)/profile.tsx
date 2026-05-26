@@ -35,8 +35,19 @@ const LUMEN_SHADOW = {
 };
 
 export default function ProfileScreen() {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, updateProfile } = useAuth();
   const router = useRouter();
+  const notificationsEnabled = profile?.notificationsEnabled !== false;
+
+  const toggleNotifications = async () => {
+    try {
+      const nextVal = !notificationsEnabled;
+      await updateProfile({ notificationsEnabled: nextVal });
+      Alert.alert("Preferences Updated", `Notifications are now ${nextVal ? 'enabled' : 'disabled'}.`);
+    } catch (error) {
+      console.error("Failed to update notification preference:", error);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -106,7 +117,12 @@ export default function ProfileScreen() {
           </MenuSection>
 
           <MenuSection title="Preferences">
-            <MenuRow icon={<Bell size={20} color="#000" />} label="Notifications" value="On" />
+            <MenuRow 
+              icon={<Bell size={20} color="#000" />} 
+              label="Notifications" 
+              value={notificationsEnabled ? "On" : "Off"} 
+              onPress={toggleNotifications}
+            />
             <MenuRow icon={<Settings size={20} color="#000" />} label="App Settings" isLast />
           </MenuSection>
 
