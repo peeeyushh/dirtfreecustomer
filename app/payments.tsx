@@ -65,7 +65,7 @@ export default function PaymentsScreen() {
         return {
           id: d.id,
           amount: booking.totalPrice || booking.price || 0,
-          status: booking.paymentStatus || (booking.status === 'completed' ? 'paid' : 'pending'),
+          status: (booking.paymentStatus === 'paid' || booking.status === 'completed' || booking.status === 'done') ? 'paid' : 'pending',
           method: booking.paymentMethod || 'Cash',
           service: booking.serviceName || booking.service || 'Service',
           date: booking.createdAt,
