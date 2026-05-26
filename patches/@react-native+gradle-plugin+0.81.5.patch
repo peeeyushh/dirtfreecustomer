@@ -1,0 +1,15 @@
+diff --git a/node_modules/@react-native/gradle-plugin/.kotlin/sessions/kotlin-compiler-16708520487526116784.salive b/node_modules/@react-native/gradle-plugin/.kotlin/sessions/kotlin-compiler-16708520487526116784.salive
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt b/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+index 67db9dc..80e4330 100644
+--- a/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
++++ b/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+@@ -7,6 +7,7 @@
+ 
+ package com.facebook.react.tasks
+ 
++import com.facebook.react.utils.Os
+ import com.facebook.react.utils.Os.cliPath
+ import com.facebook.react.utils.detectOSAwareHermesCommand
+ import com.facebook.react.utils.moveTo
