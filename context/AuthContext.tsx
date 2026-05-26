@@ -15,6 +15,7 @@ interface UserProfile {
   selectedAddress?: string;
   walletBalance?: number;
   createdAt: number;
+  notificationsEnabled?: boolean;
 }
 
 interface AuthContextType {
@@ -89,11 +90,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }, { merge: true });
 
       setProfile(prev => prev ? { ...prev, ...data } : { 
+        ...data,
         uid: uidToUse, 
         phoneNumber: phoneToUse, 
-        createdAt: Date.now(), 
-        ...data as UserProfile 
-      });
+        createdAt: Date.now()
+      } as UserProfile);
       
       if (data.selectedAddress) {
         await AsyncStorage.setItem('user_location', data.selectedAddress);

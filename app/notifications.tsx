@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Image } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { useRouter, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { 
   ArrowLeft, 
@@ -8,15 +8,16 @@ import {
   Package, 
   Percent, 
   ShieldCheck, 
-  ChevronRight,
-  MoreVertical,
   Circle,
   Zap,
   Trash2
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import Animated, { FadeInDown, FadeInRight, Layout } from 'react-native-reanimated';
+import Animated, { FadeInRight, Layout } from 'react-native-reanimated';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LUMEN_SHADOW = {
   shadowColor: "#000",
@@ -26,55 +27,131 @@ const LUMEN_SHADOW = {
   elevation: 5,
 };
 
-const NOTIFICATIONS = [
-  {
-    id: '1',
-    title: 'Booking Confirmed!',
-    desc: 'Your Deep Home Cleaning is scheduled for tomorrow at 10:00 AM.',
-    type: 'booking',
-    time: '2m ago',
-    unread: true,
-    icon: <Package size={20} color="#3B6BFF" />
-  },
-  {
-    id: '2',
-    title: '50% OFF Special',
-    desc: 'Flash sale on all Salon services! Only valid for the next 3 hours.',
-    type: 'offer',
-    time: '1h ago',
-    unread: true,
-    icon: <Percent size={20} color="#f59e0b" />
-  },
-  {
-    id: '3',
-    title: 'Verified Partner Arrived',
-    desc: 'Your AC technician, Amit Kumar, has arrived at your location.',
-    type: 'update',
-    time: '3h ago',
-    unread: false,
-    icon: <ShieldCheck size={20} color="#22C58A" />
-  },
-  {
-    id: '4',
-    title: 'New Service Alert!',
-    desc: 'We just launched Premium Kitchen Deep Cleaning. Check it out now.',
-    type: 'alert',
-    time: 'Yesterday',
-    unread: false,
-    icon: <Zap size={20} color="#6366f1" />
+interface NotificationItem {
+  id: string;
+  title: string;
+  desc: string;
+  type: string;
+  createdAt: number;
+  userId: string;
+  unread?: boolean;
+}
+
+const getNotificationIcon = (type: string) => {
+  switch (type) {
+    case 'booking':
+      return <Package size={20} color="#3B6BFF" />;
+    case 'offer':
+      return <Percent size={20} color="#f59e0b" />;
+    case 'update':
+      return <ShieldCheck size={20} color="#22C58A" />;
+    case 'alert':
+    default:
+      return <Zap size={20} color="#6366f1" />;
   }
-];
+};
+
+const formatRelativeTime = (timestamp: any) => {
+  if (!timestamp) return 'Just now';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (isNaN(date.getTime())) return 'Just now';
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'Yesterday';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+};
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+  const { profile } = useAuth();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [readIds, setReadIds] = useState<string[]>([]);
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
 
-  const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, unread: false })));
+  // 1. Load read & deleted notifications from AsyncStorage
+  useEffect(() => {
+    const loadCache = async () => {
+      try {
+        const [storedRead, storedDeleted] = await Promise.all([
+          AsyncStorage.getItem('read_notifications'),
+          AsyncStorage.getItem('deleted_notifications'),
+        ]);
+        if (storedRead) setReadIds(JSON.parse(storedRead));
+        if (storedDeleted) setDeletedIds(JSON.parse(storedDeleted));
+      } catch (e) {
+        console.error("Cache load error:", e);
+      }
+    };
+    loadCache();
+  }, []);
+
+  // 2. Real-time Firebase Firestore listener
+  useEffect(() => {
+    if (!profile?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'notifications'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const allNotifs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as NotificationItem[];
+
+      // Filter in-memory: user's personal notifications OR broadcast announcements
+      const userNotifs = allNotifs.filter(
+        (n) => (n.userId === profile.uid || n.userId === 'all') && !deletedIds.includes(n.id)
+      );
+
+      // Map unread status
+      const mapped = userNotifs.map(n => ({
+        ...n,
+        unread: !readIds.includes(n.id)
+      }));
+
+      setNotifications(mapped);
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore notifications listen error:", error);
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, [profile?.uid, readIds, deletedIds]);
+
+  // 3. Mark all as read
+  const markAllRead = async () => {
+    try {
+      const newReadIds = [...new Set([...readIds, ...notifications.map(n => n.id)])];
+      setReadIds(newReadIds);
+      await AsyncStorage.setItem('read_notifications', JSON.stringify(newReadIds));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+  // 4. Delete notification
+  const deleteNotification = async (id: string) => {
+    try {
+      const newDeletedIds = [...deletedIds, id];
+      setDeletedIds(newDeletedIds);
+      await AsyncStorage.setItem('deleted_notifications', JSON.stringify(newDeletedIds));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -100,33 +177,39 @@ export default function NotificationsScreen() {
            <Text className="text-[32px] font-bold text-black tracking-tight mt-4">Notifications</Text>
         </View>
 
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
-        >
-          {notifications.length > 0 ? (
-            <View className="pt-8">
-              {notifications.map((item, idx) => (
-                <NotificationRow 
-                  key={item.id} 
-                  item={item} 
-                  onDelete={() => deleteNotification(item.id)}
-                  delay={idx * 100}
-                />
-              ))}
-            </View>
-          ) : (
-            <View className="items-center mt-32 opacity-30 px-10">
-               <View className="h-24 w-24 rounded-full bg-gray-50 items-center justify-center border border-gray-100">
-                  <Bell size={40} color="#64748b" />
-               </View>
-               <Text className="text-[18px] font-bold text-black mt-8 text-center">All caught up!</Text>
-               <Text className="text-[13px] text-muted font-medium mt-2 text-center">
-                 Check back later for bookings, offers, and app updates.
-               </Text>
-            </View>
-          )}
-        </ScrollView>
+        {loading ? (
+          <View className="flex-1 justify-center items-center">
+            <ActivityIndicator size="large" color="#111827" />
+          </View>
+        ) : (
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            {notifications.length > 0 ? (
+              <View className="pt-8">
+                {notifications.map((item, idx) => (
+                  <NotificationRow 
+                    key={item.id} 
+                    item={item} 
+                    onDelete={() => deleteNotification(item.id)}
+                    delay={idx * 100}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View className="items-center mt-32 opacity-30 px-10">
+                 <View className="h-24 w-24 rounded-full bg-gray-50 items-center justify-center border border-gray-100">
+                    <Bell size={40} color="#64748b" />
+                 </View>
+                 <Text className="text-[18px] font-bold text-black mt-8 text-center">All caught up!</Text>
+                 <Text className="text-[13px] text-muted font-medium mt-2 text-center">
+                   Check back later for bookings, offers, and app updates.
+                 </Text>
+              </View>
+            )}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </View>
   );
@@ -144,13 +227,13 @@ function NotificationRow({ item, onDelete, delay }: any) {
         style={!item.unread ? LUMEN_SHADOW : {}}
       >
         <View className="h-12 w-12 rounded-2xl bg-white items-center justify-center shadow-sm">
-           {item.icon}
+           {getNotificationIcon(item.type)}
         </View>
         
         <View className="flex-1 ml-4 mr-2">
-           <View className="flex-row items-center justify-between mb-1">
-              <Text className={`text-[15px] font-bold ${item.unread ? 'text-black' : 'text-slate-700'}`}>{item.title}</Text>
-              <Text className="text-[10px] text-muted font-bold uppercase tracking-wider">{item.time}</Text>
+           <View className="flex-row items-center justify-between mb-1 text-wrap pr-1">
+              <Text className={`text-[15px] font-bold flex-1 mr-2 ${item.unread ? 'text-black' : 'text-slate-700'}`}>{item.title}</Text>
+              <Text className="text-[10px] text-muted font-bold uppercase tracking-wider">{formatRelativeTime(item.createdAt)}</Text>
            </View>
            <Text className="text-[13px] text-muted font-medium leading-5" numberOfLines={2}>
              {item.desc}

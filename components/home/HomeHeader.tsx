@@ -54,7 +54,10 @@ export default function HomeHeader({ userLocation, topInset, isScrolled }: HomeH
             <Ionicons name="chevron-down" size={10} color="#94a3b8" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.notificationBtn}>
+          <TouchableOpacity 
+            style={styles.notificationBtn}
+            onPress={() => router.push('/notifications')}
+          >
             <Ionicons name="notifications-outline" size={22} color={Colors.primary} />
           </TouchableOpacity>
         </View>

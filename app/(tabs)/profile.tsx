@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, Pressable, Image, Alert, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, Pressable, Image, Alert, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBar } from 'expo-status-bar';
@@ -19,12 +19,14 @@ import {
   Crown,
   Sparkles,
   ArrowUpRight,
-  ArrowDownLeft
+  ArrowDownLeft,
+  Camera
 } from 'lucide-react-native';
 import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
-import { ActivityIndicator } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadToCloudinary } from '../../lib/cloudinary';
 
 const LUMEN_SHADOW = {
   shadowColor: "#000",
@@ -37,23 +39,94 @@ const LUMEN_SHADOW = {
 export default function ProfileScreen() {
   const { profile, signOut, updateProfile } = useAuth();
   const router = useRouter();
-  const notificationsEnabled = profile?.notificationsEnabled !== false;
-
-  const toggleNotifications = async () => {
-    try {
-      const nextVal = !notificationsEnabled;
-      await updateProfile({ notificationsEnabled: nextVal });
-      Alert.alert("Preferences Updated", `Notifications are now ${nextVal ? 'enabled' : 'disabled'}.`);
-    } catch (error) {
-      console.error("Failed to update notification preference:", error);
-    }
-  };
+  const [uploading, setUploading] = useState(false);
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       { text: "Sign Out", style: "destructive", onPress: () => signOut() }
     ]);
+  };
+
+  const handleSelectImage = async () => {
+    Alert.alert(
+      "Profile Picture",
+      "Choose an option to update your profile picture",
+      [
+        { text: "Take Photo", onPress: handleCamera },
+        { text: "Choose from Gallery", onPress: handleGallery },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
+  const handleCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Required", "We need camera permission to take a picture.");
+        return;
+      }
+      
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Camera error:", error);
+      Alert.alert("Error", "Failed to access camera.");
+    }
+  };
+
+  const handleGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Required", "We need gallery permission to choose a picture.");
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Gallery error:", error);
+      Alert.alert("Error", "Failed to access photo gallery.");
+    }
+  };
+
+  const uploadImage = async (uri: string) => {
+    setUploading(true);
+    try {
+      const imageUrl = await uploadToCloudinary(uri, "user_profiles");
+      await updateProfile({ profileImage: imageUrl });
+      Alert.alert("Success", "Profile picture updated successfully.");
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      Alert.alert("Upload Failed", error.message || "Failed to upload image. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleOpenURL = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error("Failed to open URL:", error);
+      Alert.alert("Error", "Could not open the link. Please visit " + url);
+    }
   };
 
   return (
@@ -64,7 +137,7 @@ export default function ProfileScreen() {
         <View className="px-8 pt-4 pb-4">
           <Text className="text-[32px] font-bold text-black tracking-tight">Account</Text>
         </View>
-
+ 
         <ScrollView 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 140 }}
@@ -75,7 +148,12 @@ export default function ProfileScreen() {
             className="mx-6 mt-6 mb-10 bg-white rounded-[48px] p-8 flex-row items-center border border-gray-50"
             style={LUMEN_SHADOW}
           >
-            <View className="relative">
+            <TouchableOpacity 
+              onPress={handleSelectImage} 
+              disabled={uploading} 
+              activeOpacity={0.8}
+              className="relative"
+            >
               <Animated.View entering={ZoomIn.delay(300).duration(600)} className="h-20 w-20 rounded-[32px] bg-blue-600 items-center justify-center shadow-lg shadow-blue-300 overflow-hidden">
                 {profile?.profileImage ? (
                   <Image source={{ uri: profile.profileImage }} className="h-full w-full" />
@@ -84,11 +162,16 @@ export default function ProfileScreen() {
                     {profile?.firstName ? profile.firstName.charAt(0).toUpperCase() : (profile?.phoneNumber ? '#' : 'P')}
                   </Text>
                 )}
+                {uploading && (
+                  <View className="absolute top-0 left-0 w-full h-full bg-black/40 items-center justify-center">
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                )}
               </Animated.View>
               <View className="absolute -bottom-2 -right-2 h-8 w-8 bg-black rounded-full border-4 border-white items-center justify-center">
-                 <ShieldCheck size={14} color="#fff" />
+                 <Camera size={14} color="#fff" />
               </View>
-            </View>
+            </TouchableOpacity>
             
             <View className="ml-6 flex-1">
               <Text className="text-[22px] font-bold text-black tracking-tight" numberOfLines={1}>
@@ -118,23 +201,27 @@ export default function ProfileScreen() {
 
           <MenuSection title="Preferences">
             <MenuRow 
-              icon={<Bell size={20} color="#000" />} 
-              label="Notifications" 
-              value={notificationsEnabled ? "On" : "Off"} 
-              onPress={toggleNotifications}
+              icon={<Settings size={20} color="#000" />} 
+              label="App Settings" 
+              isLast 
+              onPress={() => router.push('/settings')} 
             />
-            <MenuRow icon={<Settings size={20} color="#000" />} label="App Settings" isLast />
           </MenuSection>
 
           <MenuSection title="Support">
-            <MenuRow icon={<HelpCircle size={20} color="#000" />} label="Help Centre" />
-            <MenuRow icon={<FileText size={20} color="#000" />} label="Privacy Policy" />
+            <MenuRow 
+              icon={<HelpCircle size={20} color="#000" />} 
+              label="Help Centre" 
+              onPress={() => handleOpenURL('https://dirtfree.in/contact')} 
+            />
+            <MenuRow 
+              icon={<FileText size={20} color="#000" />} 
+              label="Privacy Policy" 
+              onPress={() => handleOpenURL('https://dirtfree.in/privacy-policy')} 
+            />
             <MenuRow icon={<LogOut size={20} color="#ef4444" />} label="Sign Out" color="#ef4444" isLast onPress={handleLogout} />
           </MenuSection>
 
-          <Text className="text-center text-gray-300 text-[11px] font-bold uppercase tracking-[2px] mt-8 mb-8">
-            Version 2.4.0 (Build 88)
-          </Text>
         </ScrollView>
       </SafeAreaView>
     </View>

@@ -11,6 +11,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -19,13 +21,23 @@ export default function GlobalNotificationListener() {
   const notifiedMessageIds = useRef(new Set<string>());
   const listenerStartTime = useRef(Date.now());
 
-  // 1. Request permissions on mount
   useEffect(() => {
     async function requestPermissions() {
       if (Platform.OS === 'web') return;
+      
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted') {
         await Notifications.requestPermissionsAsync();
+      }
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#3B6BFF',
+          showBadge: true,
+        });
       }
     }
     requestPermissions();
@@ -123,6 +135,7 @@ export default function GlobalNotificationListener() {
           title: `New Message - ${serviceName}`,
           body: messageText,
           data: { type: 'chat' },
+          sound: true,
         },
         trigger: null, // show immediately
       });
@@ -131,6 +144,57 @@ export default function GlobalNotificationListener() {
     return () => {
       unsubscribeBookings();
       Object.values(messageUnsubscribes).forEach((unsub) => unsub());
+    };
+  }, [user?.uid, profile?.notificationsEnabled]);
+
+  // 3. Setup general notification listener to trigger native push notifications
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
+      orderBy('createdAt', 'desc'),
+      limit(5)
+    );
+
+    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notifId = change.doc.id;
+          const notifData = change.doc.data();
+          const isForUser = notifData.userId === user.uid || notifData.userId === 'all';
+
+          if (isForUser && !notifiedMessageIds.current.has(notifId)) {
+            notifiedMessageIds.current.add(notifId);
+
+            const createdAt = notifData.createdAt;
+            if (createdAt && createdAt > listenerStartTime.current) {
+              triggerLocalNotification(notifData.title || 'Notification', notifData.desc || '', notifData.type || 'alert');
+            }
+          }
+        }
+      });
+    });
+
+    const triggerLocalNotification = async (title: string, body: string, type: string) => {
+      // Stop notification if user explicitly disabled it in settings/profile
+      if (profile?.notificationsEnabled === false) {
+        return;
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: title,
+          body: body,
+          data: { type: type },
+          sound: true,
+        },
+        trigger: null, // show immediately
+      });
+    };
+
+    return () => {
+      unsubscribeNotifications();
     };
   }, [user?.uid, profile?.notificationsEnabled]);
 

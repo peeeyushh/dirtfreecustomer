@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, Stack } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { 
   ArrowLeft, 
   CreditCard, 
@@ -16,7 +16,8 @@ import {
   XCircle,
   Clock,
   ChevronRight,
-  Receipt
+  Receipt,
+  X
 } from 'lucide-react-native';
 
 const LUMEN_SHADOW = {
@@ -42,6 +43,7 @@ export default function PaymentsScreen() {
   const { profile } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
 
   useEffect(() => {
     fetchPayments();
@@ -191,7 +193,9 @@ export default function PaymentsScreen() {
                     key={payment.id} 
                     entering={FadeInDown.delay(index * 80).duration(500)}
                   >
-                    <View
+                    <TouchableOpacity
+                      onPress={() => setSelectedPayment(payment)}
+                      activeOpacity={0.7}
                       className="flex-row items-center mb-4 bg-white p-5 rounded-[28px] border border-gray-50"
                       style={LUMEN_SHADOW}
                     >
@@ -218,7 +222,7 @@ export default function PaymentsScreen() {
                         <Text className="text-[16px] font-bold text-black">₹{payment.amount}</Text>
                         <Text className="text-[10px] text-gray-400 font-bold mt-1">{formatDate(payment.date)}</Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   </Animated.View>
                 ))
               )}
@@ -226,6 +230,64 @@ export default function PaymentsScreen() {
           </ScrollView>
         )}
       </SafeAreaView>
+
+      {/* Receipt Modal */}
+      <Modal visible={!!selectedPayment} transparent animationType="fade">
+        <View className="flex-1 items-center justify-center bg-black/60 px-8">
+          <Animated.View entering={ZoomIn.duration(400)} className="bg-white rounded-[40px] p-8 w-full max-w-sm">
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-[18px] font-black text-black">Receipt</Text>
+              <TouchableOpacity onPress={() => setSelectedPayment(null)} className="h-8 w-8 rounded-full bg-gray-50 items-center justify-center">
+                <X size={16} color="#000" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="items-center mb-6">
+              <View className="h-16 w-16 rounded-full bg-green-50 items-center justify-center mb-4 border border-green-100">
+                <CheckCircle2 size={32} color="#10b981" />
+              </View>
+              <Text className="text-[28px] font-black text-black">₹{selectedPayment?.amount}</Text>
+              <Text className="text-[12px] font-bold text-green-600 uppercase tracking-widest mt-1">
+                {selectedPayment?.status}
+              </Text>
+            </View>
+
+            <View className="bg-gray-50 rounded-3xl p-5 mb-6 border border-gray-100 gap-3">
+              <View className="flex-row justify-between">
+                <Text className="text-[12px] text-gray-400 font-bold">Service</Text>
+                <Text className="text-[12px] text-black font-bold">{selectedPayment?.service}</Text>
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-[12px] text-gray-400 font-bold">Date</Text>
+                <Text className="text-[12px] text-black font-bold">
+                  {selectedPayment && formatDate(selectedPayment.date)}
+                </Text>
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-[12px] text-gray-400 font-bold">Method</Text>
+                <Text className="text-[12px] text-black font-bold">{selectedPayment?.method}</Text>
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-[12px] text-gray-400 font-bold">Booking ID</Text>
+                <Text className="text-[12px] text-black font-bold text-right max-w-[150px]" numberOfLines={1}>
+                  {selectedPayment?.id}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              onPress={() => {
+                setSelectedPayment(null);
+                router.push('/bookings');
+              }}
+              className="bg-black rounded-2xl h-14 items-center justify-center flex-row gap-2"
+            >
+              <Text className="text-white font-bold text-[15px]">View Booking Details</Text>
+              <ChevronRight size={16} color="#fff" />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
