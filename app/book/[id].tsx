@@ -649,13 +649,17 @@ export default function BookFlow() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
               {dates.map((d, i) => {
                 const on = d.toDateString() === date.toDateString();
+                const isToday = d.toDateString() === new Date().toDateString();
+                const allSlotsPassed = isToday && new Date().getHours() >= 19;
                 return (
-                  <Pressable key={i} onPress={() => setDate(d)}
-                    className={`w-12 py-2 rounded-xl items-center justify-center ${on ? 'bg-fg' : 'bg-bg'}`}>
+                  <Pressable key={i} onPress={() => !allSlotsPassed && setDate(d)}
+                    disabled={allSlotsPassed}
+                    className={`w-12 py-2 rounded-xl items-center justify-center ${on ? 'bg-fg' : 'bg-bg'} ${allSlotsPassed ? 'opacity-40' : ''}`}>
                     <Text className={`text-[9px] font-bold uppercase ${on ? 'text-white/60' : 'text-muted'}`}>
                       {d.toLocaleDateString('en-US', { weekday: 'short' })}
                     </Text>
                     <Text className={`text-[14px] font-bold mt-0.5 ${on ? 'text-white' : 'text-fg'}`}>{d.getDate()}</Text>
+                    {isToday && <Text className="text-[7px] text-success font-extrabold mt-0.5">TODAY</Text>}
                   </Pressable>
                 );
               })}
@@ -665,12 +669,20 @@ export default function BookFlow() {
             <View className="flex-row flex-wrap justify-between gap-y-2">
               {SLOTS.map(s => {
                 const on = s === slot;
+                const isToday = date.toDateString() === new Date().toDateString();
+                const [time, period] = s.split(' ');
+                let hour = parseInt(time.split(':')[0]);
+                if (period === 'PM' && hour !== 12) hour += 12;
+                if (period === 'AM' && hour === 12) hour = 0;
+                const isPassed = isToday && new Date().getHours() >= hour - 1;
                 return (
-                  <Pressable key={s} onPress={() => setSlot(s)}
-                    className={`py-2 rounded-lg flex-row justify-center items-center ${on ? 'bg-fg' : 'bg-bg'}`}
+                  <Pressable key={s} onPress={() => !isPassed && setSlot(s)}
+                    disabled={isPassed}
+                    className={`py-2.5 rounded-lg flex-row justify-center items-center ${on ? 'bg-fg' : 'bg-bg'} ${isPassed ? 'opacity-35' : ''}`}
                     style={{ width: '48.5%' }}
                   >
                     <Text className={`text-[12px] font-bold ${on ? 'text-white' : 'text-fg'}`}>{s}</Text>
+                    {isPassed && <Text className="text-[9px] text-danger font-bold ml-1">PASSED</Text>}
                   </Pressable>
                 );
               })}
