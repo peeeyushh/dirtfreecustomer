@@ -617,33 +617,49 @@ function BookingCard({ booking, index, onOpenChat }: any) {
 
             {booking.bookingType === 'recurring' && recurringTasks.length > 0 ? (
               <View className="bg-gray-50 rounded-[28px] p-5 mb-4 border border-gray-100">
-                <Text className="text-[12px] font-bold text-black/40 uppercase tracking-widest mb-4">Subscription Schedule</Text>
-                {recurringTasks.map((task, index) => (
-                  <View key={task.id} className="flex-row items-center justify-between py-2 border-b border-gray-100/50 last:border-0">
-                    <View className="flex-row items-center gap-3">
-                      <View className={`h-8 w-8 rounded-full items-center justify-center ${task.status === 'completed' ? 'bg-green-100' : task.assignedPartnerId ? 'bg-blue-100' : 'bg-gray-200'}`}>
-                        <Text className={`text-[10px] font-bold ${task.status === 'completed' ? 'text-green-600' : task.assignedPartnerId ? 'text-blue-600' : 'text-gray-500'}`}>{index + 1}</Text>
+                <Text className="text-[12px] font-bold text-black/40 uppercase tracking-widest mb-4">Current Visit</Text>
+                {(() => {
+                  const currentIdx = recurringTasks.findIndex(t => t.status !== 'completed' && t.status !== 'cancelled');
+                  // If all are completed, show the last one.
+                  const taskToShow = currentIdx === -1 ? recurringTasks[recurringTasks.length - 1] : recurringTasks[currentIdx];
+                  const displayIndex = currentIdx === -1 ? recurringTasks.length : currentIdx + 1;
+                  
+                  if (!taskToShow) return null;
+                  
+                  return (
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center gap-3">
+                        <View className={`h-10 w-10 rounded-full items-center justify-center ${taskToShow.status === 'completed' ? 'bg-green-100 border border-green-200' : taskToShow.assignedPartnerId ? 'bg-blue-100 border border-blue-200' : 'bg-gray-200 border border-gray-300'}`}>
+                          {taskToShow.status === 'completed' ? (
+                            <CheckCircle2 size={20} color="#16a34a" />
+                          ) : (
+                            <Text className={`text-[13px] font-bold ${taskToShow.assignedPartnerId ? 'text-blue-600' : 'text-gray-500'}`}>{displayIndex}</Text>
+                          )}
+                        </View>
+                        <View>
+                          <Text className="text-[14px] font-bold text-black">
+                            Day {displayIndex}: {taskToShow.date ? new Date(taskToShow.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown'}
+                          </Text>
+                          <Text className={`text-[11px] font-bold mt-1 ${taskToShow.status === 'completed' ? 'text-green-600' : taskToShow.assignedPartnerId ? 'text-blue-600' : 'text-gray-400'}`}>
+                            {taskToShow.status === 'completed' ? 'COMPLETED' : taskToShow.assignedPartnerId ? 'ASSIGNED' : 'SEARCHING FOR SPECIALIST...'}
+                          </Text>
+                        </View>
                       </View>
                       <View>
-                        <Text className="text-[13px] font-bold text-black">
-                          {task.date ? new Date(task.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown'}
-                        </Text>
-                        <Text className="text-[10px] text-muted font-medium mt-0.5">
-                          {task.status === 'completed' ? 'Completed' : task.assignedPartnerId ? 'Assigned' : 'Searching for partner...'}
-                        </Text>
+                        {taskToShow.partnerName ? (
+                          <View className="items-end">
+                            <Text className="text-[10px] uppercase text-muted font-bold mb-0.5">Specialist</Text>
+                            <Text className="text-[13px] font-bold text-black">{taskToShow.partnerName.split(' ')[0]}</Text>
+                          </View>
+                        ) : taskToShow.assignedPartnerId ? (
+                          <Text className="text-[12px] font-bold text-blue-600">Assigned</Text>
+                        ) : (
+                          <ActivityIndicator size="small" color="#9CA3AF" />
+                        )}
                       </View>
                     </View>
-                    <View>
-                      {task.partnerName ? (
-                        <Text className="text-[12px] font-bold text-blue-600">{task.partnerName.split(' ')[0]}</Text>
-                      ) : task.assignedPartnerId ? (
-                        <Text className="text-[12px] font-bold text-blue-600">Assigned</Text>
-                      ) : (
-                        <ActivityIndicator size="small" color="#9CA3AF" />
-                      )}
-                    </View>
-                  </View>
-                ))}
+                  );
+                })()}
               </View>
             ) : null}
 
