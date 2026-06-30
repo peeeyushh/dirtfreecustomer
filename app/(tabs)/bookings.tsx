@@ -348,6 +348,31 @@ function BookingCard({ booking, index, onOpenChat }: any) {
 
   const [partnerLocation, setPartnerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [recurringTasks, setRecurringTasks] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (booking.bookingType !== 'recurring') return;
+    const q = query(collection(db, 'serviceTasks'), where('bookingId', '==', booking.id));
+    const unsub = onSnapshot(q, async (snapshot) => {
+      const fetched = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      fetched.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Fetch partner names for assigned tasks
+      for (const t of fetched) {
+        if (t.assignedPartnerId && !t.partnerName) {
+          try {
+            const pDoc = await getDoc(doc(db, 'partners', t.assignedPartnerId));
+            if (pDoc.exists()) {
+              const pData = pDoc.data();
+              t.partnerName = pData.name || `${pData.firstName || ''} ${pData.lastName || ''}`.trim();
+            }
+          } catch(e) {}
+        }
+      }
+      setRecurringTasks(fetched);
+    });
+    return unsub;
+  }, [booking.id, booking.bookingType]);
 
   useEffect(() => {
     if (!booking.id || isCompleted || isCancelled || !user?.uid) {
@@ -471,6 +496,15 @@ function BookingCard({ booking, index, onOpenChat }: any) {
     booking?.items?.[0]?.name || 
     'Service';
 
+  // For recurring, find the upcoming task to show its partner
+  const upcomingTask = booking.bookingType === 'recurring' 
+    ? recurringTasks.find(t => t.status !== 'completed' && t.status !== 'cancelled') 
+    : null;
+    
+  const displayWorkerName = booking.bookingType === 'recurring' && upcomingTask
+    ? upcomingTask.partnerName || booking.workerName || booking.specialist?.name
+    : booking.workerName || booking.specialist?.name;
+
   const rawDate = booking?.date || booking?.items?.[0]?.date || 'No Date';
   
   // Format date nicely even if it's ISO or other formats
@@ -523,10 +557,10 @@ function BookingCard({ booking, index, onOpenChat }: any) {
               </View>
               {!expanded && (
                 <View className="mt-2 flex-row items-center gap-1">
-                  {booking.workerName || booking.specialist?.name ? (
+                  {displayWorkerName ? (
                     <>
                       <Image source={{ uri: booking.workerImage || booking.specialist?.image || 'https://i.pravatar.cc/150?u=worker' }} className="h-4 w-4 rounded-full" />
-                      <Text className="text-[10px] font-bold text-blue-600">{(booking.workerName || booking.specialist?.name).split(' ')[0]}</Text>
+                      <Text className="text-[10px] font-bold text-blue-600">{String(displayWorkerName).split(' ')[0]}</Text>
                     </>
                   ) : !isCancelled && !isCompleted ? (
                     <View className="flex-row items-center gap-1">
@@ -581,7 +615,39 @@ function BookingCard({ booking, index, onOpenChat }: any) {
               </View>
             )}
 
-            {booking.workerName || booking.specialist?.name || booking.workerId ? (
+            {booking.bookingType === 'recurring' && recurringTasks.length > 0 ? (
+              <View className="bg-gray-50 rounded-[28px] p-5 mb-4 border border-gray-100">
+                <Text className="text-[12px] font-bold text-black/40 uppercase tracking-widest mb-4">Subscription Schedule</Text>
+                {recurringTasks.map((task, index) => (
+                  <View key={task.id} className="flex-row items-center justify-between py-2 border-b border-gray-100/50 last:border-0">
+                    <View className="flex-row items-center gap-3">
+                      <View className={`h-8 w-8 rounded-full items-center justify-center ${task.status === 'completed' ? 'bg-green-100' : task.assignedPartnerId ? 'bg-blue-100' : 'bg-gray-200'}`}>
+                        <Text className={`text-[10px] font-bold ${task.status === 'completed' ? 'text-green-600' : task.assignedPartnerId ? 'text-blue-600' : 'text-gray-500'}`}>{index + 1}</Text>
+                      </View>
+                      <View>
+                        <Text className="text-[13px] font-bold text-black">
+                          {task.date ? new Date(task.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown'}
+                        </Text>
+                        <Text className="text-[10px] text-muted font-medium mt-0.5">
+                          {task.status === 'completed' ? 'Completed' : task.assignedPartnerId ? 'Assigned' : 'Searching for partner...'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View>
+                      {task.partnerName ? (
+                        <Text className="text-[12px] font-bold text-blue-600">{task.partnerName.split(' ')[0]}</Text>
+                      ) : task.assignedPartnerId ? (
+                        <Text className="text-[12px] font-bold text-blue-600">Assigned</Text>
+                      ) : (
+                        <ActivityIndicator size="small" color="#9CA3AF" />
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {displayWorkerName ? (
               <View className="bg-gray-50 rounded-[32px] p-5 flex-row items-center border border-gray-100">
                 <View className="relative">
                   <Image 
@@ -591,7 +657,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
                   <View className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white ${isCompleted ? 'bg-green-500' : 'bg-blue-500'}`} />
                 </View>
                 <View className="flex-1 ml-4">
-                  <Text className="text-[14px] font-bold text-black">{booking.workerName || booking.specialist?.name}</Text>
+                  <Text className="text-[14px] font-bold text-black">{displayWorkerName}</Text>
                   <View className="flex-row items-center gap-2 mt-1">
                     <View className="flex-row items-center gap-0.5">
                        <Star size={10} color="#D6A75A" fill="#D6A75A" />

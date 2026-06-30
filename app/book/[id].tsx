@@ -281,11 +281,8 @@ export default function BookFlow() {
         // Generate dates
         let numTasks = 0;
         let step = 1; // days
-        if (recurringFrequency === 'daily_1_week') { numTasks = 7; step = 1; }
-        else if (recurringFrequency === 'alternate_1_week') { numTasks = 4; step = 2; }
-        else if (recurringFrequency === 'daily_1_month') { numTasks = 30; step = 1; }
-        else if (recurringFrequency === 'alternate_1_month') { numTasks = 15; step = 2; }
-        else if (recurringFrequency === 'weekly_1_month') { numTasks = 4; step = 7; }
+        if (recurringFrequency === 'weekly') { numTasks = 4; step = 7; } // 4 visits, 1 per week
+        else if (recurringFrequency === 'monthly') { numTasks = 30; step = 1; } // 30 visits, 1 per day
         else { numTasks = 1; step = 1; }
 
         let currentDate = new Date(date);
