@@ -342,13 +342,26 @@ const ALL_ADDONS_LOOKUP: Record<string, { label: string; price: number }> = {
 function BookingCard({ booking, index, onOpenChat }: any) {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(index === 0);
-  const statusStr = (booking?.status || '').toLowerCase();
-  const isCompleted = statusStr === 'completed' || statusStr === 'done';
-  const isCancelled = statusStr === 'cancelled';
-
   const [partnerLocation, setPartnerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [recurringTasks, setRecurringTasks] = useState<any[]>([]);
+
+  // For recurring, find the upcoming task to show its partner/status
+  const upcomingTask = booking.bookingType === 'recurring' 
+    ? recurringTasks.find(t => t.status !== 'completed' && t.status !== 'cancelled') 
+    : null;
+
+  const resolvedStatus = booking.bookingType === 'recurring'
+    ? (upcomingTask ? upcomingTask.status : (recurringTasks.length > 0 ? 'completed' : booking?.status))
+    : booking?.status;
+
+  const statusStr = (resolvedStatus || '').toLowerCase();
+  const isCompleted = statusStr === 'completed' || statusStr === 'done';
+  const isCancelled = statusStr === 'cancelled';
+
+  const activeWorkerId = booking.bookingType === 'recurring' && upcomingTask
+    ? upcomingTask.assignedPartnerId
+    : booking.workerId;
 
   useEffect(() => {
     if (booking.bookingType !== 'recurring') return;
@@ -396,12 +409,12 @@ function BookingCard({ booking, index, onOpenChat }: any) {
   }, [booking.id, isCompleted, isCancelled, user?.uid]);
 
   useEffect(() => {
-    if (!booking.workerId || isCompleted || isCancelled) {
+    if (!activeWorkerId || isCompleted || isCancelled) {
       setPartnerLocation(null);
       return;
     }
 
-    const unsub = onSnapshot(doc(db, 'partners', booking.workerId), (snapshot) => {
+    const unsub = onSnapshot(doc(db, 'partners', activeWorkerId), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data.latitude && data.longitude) {
@@ -414,7 +427,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
     });
 
     return () => unsub();
-  }, [booking.workerId, isCompleted, isCancelled]);
+  }, [activeWorkerId, isCompleted, isCancelled]);
 
   const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -495,11 +508,6 @@ function BookingCard({ booking, index, onOpenChat }: any) {
     booking?.items?.[0]?.title || 
     booking?.items?.[0]?.name || 
     'Service';
-
-  // For recurring, find the upcoming task to show its partner
-  const upcomingTask = booking.bookingType === 'recurring' 
-    ? recurringTasks.find(t => t.status !== 'completed' && t.status !== 'cancelled') 
-    : null;
     
   const displayWorkerName = booking.bookingType === 'recurring' && upcomingTask
     ? upcomingTask.partnerName || null
