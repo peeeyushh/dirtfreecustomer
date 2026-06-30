@@ -690,7 +690,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
                     <Text className="text-[11px] text-muted font-bold uppercase tracking-widest">• Specialist</Text>
                   </View>
                 </View>
-                {!isCancelled && (
+                {!isCancelled && !isCompleted && (
                   <View className="flex-row gap-2">
                     <Pressable 
                       onPress={() => onOpenChat(booking)}
