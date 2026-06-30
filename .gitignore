@@ -42,3 +42,9 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Sensitive credentials - NEVER push these
+*.json.enc
+*-firebase-adminsdk-*.json
+dirtfree-62827-*.json
+*-service-account*.json
