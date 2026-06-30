@@ -502,7 +502,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
     : null;
     
   const displayWorkerName = booking.bookingType === 'recurring' && upcomingTask
-    ? upcomingTask.partnerName || booking.workerName || booking.specialist?.name
+    ? upcomingTask.partnerName || null
     : booking.workerName || booking.specialist?.name;
 
   const rawDate = booking?.date || booking?.items?.[0]?.date || 'No Date';
