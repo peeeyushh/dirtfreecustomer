@@ -137,7 +137,7 @@ export default function SettingsScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 100 }}
           >
-            <Animated.View entering={FadeInDown.duration(600)}>
+            <View>
               {/* Preferences Section */}
               <SettingsSection title="Preferences">
                 <SettingsRow 
@@ -177,7 +177,7 @@ export default function SettingsScreen() {
               <Text className="text-center text-gray-300 text-[11px] font-bold uppercase tracking-[2px] mt-12 mb-8">
                 Version 2.4.0 (Build 88)
               </Text>
-            </Animated.View>
+            </View>
           </ScrollView>
         )}
       </SafeAreaView>

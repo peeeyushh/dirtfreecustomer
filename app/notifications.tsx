@@ -217,9 +217,7 @@ export default function NotificationsScreen() {
 
 function NotificationRow({ item, onDelete, delay }: any) {
   return (
-    <Animated.View 
-      layout={Layout.springify()}
-      entering={FadeInRight.delay(delay)}
+    <View entering={FadeInRight.delay(delay)}
       className="mb-4 mx-6"
     >
       <Pressable 
@@ -254,6 +252,6 @@ function NotificationRow({ item, onDelete, delay }: any) {
            </View>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }

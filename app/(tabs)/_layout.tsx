@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useRouter, useSegments, usePathname } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -158,13 +158,23 @@ export default function TabLayout() {
   const { profile, loading } = useAuth();
   const { isServiceable } = useLocation();
   const router = useRouter();
+  const [showNotServiceable, setShowNotServiceable] = useState(false);
+
+  useEffect(() => {
+    if (!isServiceable) {
+      // Small 1.5s delay to show a checking screen instead of abrupt flash
+      const timer = setTimeout(() => setShowNotServiceable(true), 1500);
+      return () => clearTimeout(timer);
+    } else {
+      setShowNotServiceable(false);
+    }
+  }, [isServiceable]);
 
   useEffect(() => {
     if (loading) return;
 
     const hasUid = !!profile?.uid;
     const hasName = !!profile?.firstName;
-    const hasLocation = !!profile?.selectedAddress;
 
     if (!hasUid) {
       router.replace('/');
@@ -177,6 +187,14 @@ export default function TabLayout() {
 
   // Block access when user is not in a serviceable area
   if (!isServiceable) {
+    if (!showNotServiceable) {
+      return (
+        <View style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#000" />
+          <Text style={{ marginTop: 12, fontSize: 14, fontWeight: '600', color: '#666' }}>Checking availability in your area...</Text>
+        </View>
+      );
+    }
     return <NotServiceableScreen />;
   }
 

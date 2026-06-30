@@ -164,7 +164,7 @@ export default function SearchScreen() {
                    </View>
                    
                    {popularServices.map((s, i) => (
-                     <Animated.View key={s.id || i} entering={FadeInDown.delay(i * 100)}>
+                      <View key={s.id || i}>
                        <Pressable 
                          onPress={() => router.push({ pathname: '/book/[id]', params: { id: s.id || s.slug } })}
                          className="flex-row items-center mb-4 bg-white p-4 rounded-[32px] border border-gray-50"
@@ -184,7 +184,7 @@ export default function SearchScreen() {
                           </View>
                           <ChevronRight size={18} color="#cbd5e1" />
                        </Pressable>
-                     </Animated.View>
+                     </View>
                    ))}
                 </View>
              </View>
@@ -198,7 +198,7 @@ export default function SearchScreen() {
 function SearchResultCard({ item }: any) {
   const router = useRouter();
   return (
-    <Animated.View entering={FadeInUp}>
+    <View>
       <Pressable 
         onPress={() => router.push({ pathname: '/book/[id]', params: { id: item.id || item.slug } })}
         className="flex-row items-center mb-6 bg-white p-5 rounded-[40px] border border-gray-50 shadow-sm"
@@ -219,6 +219,6 @@ function SearchResultCard({ item }: any) {
            </View>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }

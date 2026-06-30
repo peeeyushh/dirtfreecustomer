@@ -1,18 +1,19 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { ScrollView, View, Text, Image, Pressable, Modal, ActivityIndicator } from "react-native";
+import { ScrollView, View, Text, Image, Pressable, Modal, ActivityIndicator, Dimensions, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Check, CheckCircle2, ChevronRight, Calendar, Clock, CreditCard, ShieldCheck, Sparkles } from "lucide-react-native";
+import { ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, ShieldCheck, Sparkles, AlertCircle, Tag, MapPin } from "lucide-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SERVICES } from "../../lib/data";
 import { useLocation } from "../../context/LocationContext";
 import Animated, { FadeIn, FadeInDown, ZoomIn } from "react-native-reanimated";
-import { doc, getDoc, collection, addDoc, serverTimestamp, getDocs, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, onSnapshot, writeBatch } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../context/AuthContext";
 import * as Haptics from 'expo-haptics';
 import { Alert } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
+import { socketService } from "../../lib/socket";
 
 const CATEGORY_ADDONS: Record<string, { id: string; label: string; price: number }[]> = {
   "Cleaning": [
@@ -53,39 +54,39 @@ const getCategoryKey = (category?: string) => {
   return "Cleaning";
 };
 
-const FREQUENCIES = [
-  { id: 'one-time', label: 'One-time', visits: 1 },
-  { id: 'weekly', label: 'Weekly', visits: 4 },
-  { id: 'monthly', label: 'Monthly', visits: 30 },
-];
-
 const SLOTS = ["10:00 AM", "01:00 PM", "04:00 PM", "07:00 PM"];
-const URGENT_FEE = 149;
 
-const LUMEN_SHADOW = { 
-  shadowColor: "#0E1220", 
-  shadowOpacity: 0.06, 
-  shadowRadius: 16, 
-  shadowOffset: { width: 0, height: 6 }, 
-  elevation: 3 
+const S = {
+  shadowColor: "#000",
+  shadowOpacity: 0.04,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
 };
+
+const { width } = Dimensions.get('window');
+
+const AVAILABLE_OFFERS = [
+  { code: 'DIRTFREE50', description: 'Flat ₹50 off on your first booking', discount: 50 },
+  { code: 'FESTIVE100', description: 'Special ₹100 off on deep cleaning', discount: 100 },
+  { code: 'CLEAN20', description: '₹20 off on regular cleaning', discount: 20 },
+];
 
 export default function BookFlow() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { address, currentCityData } = useLocation();
+  const { address, currentCityData, location } = useLocation();
+  const { user, profile } = useAuth();
+  
+  const URGENT_FEE = currentCityData?.settings?.urgentFee !== undefined ? Number(currentCityData.settings.urgentFee) : 49;
+  const FIXED_SERVICE_FEE = currentCityData?.settings?.serviceFee !== undefined ? Number(currentCityData.settings.serviceFee) : 49;
 
   const [service, setService] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  const [step, setStep] = useState(0);
-  const [frequency, setFrequency] = useState('one-time');
-  const qty = 1;
+  const [activeTab, setActiveTab] = useState<'instant' | 'scheduled' | 'recurring'>('scheduled');
+  const [mainMinutes, setMainMinutes] = useState(30);
+  const [addonMinutes, setAddonMinutes] = useState<Record<string, number>>({});
   const [addons, setAddons] = useState<string[]>([]);
-  const currentAddonsList = useMemo(() => {
-    const catKey = getCategoryKey(service?.category);
-    return CATEGORY_ADDONS[catKey] || CATEGORY_ADDONS["Cleaning"];
-  }, [service]);
   const [date, setDate] = useState(new Date());
   const [slot, setSlot] = useState("10:00 AM");
   const [isUrgent, setIsUrgent] = useState(false);
@@ -95,21 +96,28 @@ export default function BookFlow() {
   const [couponCode, setCouponCode] = useState('');
   const [discount, setDiscount] = useState(0);
   const [isCouponModalVisible, setIsCouponModalVisible] = useState(false);
-  const [gstPercent, setGstPercent] = useState(18);
-  const [servicePercent, setServicePercent] = useState(5);
-  const { user, profile } = useAuth();
-  const { location } = useLocation();
+  const [isPartnerAvailable, setIsPartnerAvailable] = useState<boolean | null>(null);
+  const [recurringFrequency, setRecurringFrequency] = useState('weekly');
+  const [isRecurringModalVisible, setIsRecurringModalVisible] = useState(false);
 
-  const FIXED_SERVICE_FEE = 49;
+  useEffect(() => {
+    socketService.connect();
+    return () => {
+      socketService.disconnect();
+    };
+  }, []);
+
+  const currentAddonsList = useMemo(() => {
+    const catKey = getCategoryKey(service?.category);
+    return CATEGORY_ADDONS[catKey] || CATEGORY_ADDONS["Cleaning"];
+  }, [service]);
 
   useEffect(() => {
     const fetchService = async () => {
       try {
         const searchId = (id as string)?.toLowerCase();
-        
-        // 1. Aggressive local search
-        let finalSvc = SERVICES.find(s => 
-          s.slug?.toLowerCase() === searchId || 
+        let finalSvc = SERVICES.find(s =>
+          s.slug?.toLowerCase() === searchId ||
           s.title?.toLowerCase() === searchId ||
           s.slug?.replace(/-/g, ' ').toLowerCase() === searchId ||
           searchId?.includes(s.slug?.toLowerCase())
@@ -147,6 +155,26 @@ export default function BookFlow() {
     if (id) fetchService();
   }, [id, currentCityData]);
 
+  useEffect(() => {
+    if (!address) { setIsPartnerAvailable(false); return; }
+    const addressLower = address.toLowerCase();
+    const unsubPartners = onSnapshot(collection(db, "partners"), async (partnersSnap) => {
+      try {
+        const prosSnap = await getDocs(collection(db, "professionals"));
+        const allDocs = [...partnersSnap.docs, ...prosSnap.docs];
+        const available = allDocs.some(doc => {
+          const d = doc.data();
+          if (d.status && d.status !== 'approved' && d.status !== 'pending') return false;
+          if (d.isOnline !== undefined && d.isOnline !== true) return false;
+          const proCity = (d.city || '').toLowerCase().trim();
+          return proCity && addressLower.includes(proCity);
+        });
+        setIsPartnerAvailable(available);
+      } catch (e) { setIsPartnerAvailable(false); }
+    });
+    return () => unsubPartners();
+  }, [address]);
+
   const dates = useMemo(() => {
     const d = [];
     for (let i = 0; i < 7; i++) {
@@ -157,26 +185,47 @@ export default function BookFlow() {
     return d;
   }, []);
 
-  const subtotal = (service?.price || 0) * qty + addons.reduce((s, id) => s + (currentAddonsList.find(a => a.id === id)?.price ?? 0), 0);
-  const urgentAmount = isUrgent ? URGENT_FEE : 0;
-  const billSubtotal = subtotal + urgentAmount + FIXED_SERVICE_FEE;
-  const gstAmount = billSubtotal * (gstPercent / 100);
-  const finalTotal = billSubtotal + gstAmount - discount;
+  const getServicePrice = (basePrice: number) => {
+    if (activeTab === 'recurring') return Math.round(basePrice * 0.8);
+    return basePrice;
+  };
 
-  const next = () => (step < 2 ? setStep(step + 1) : setDone(true));
-  const back = () => (step > 0 ? setStep(step - 1) : router.back());
+  const getAddonPrice = (basePrice: number) => {
+    if (activeTab === 'recurring') return Math.round(basePrice * 0.8);
+    return basePrice;
+  };
+
+  const baseServicePrice = getServicePrice(service?.price || 0);
+  const serviceSubtotal = Math.round(baseServicePrice * (mainMinutes / 30));
+  const addonsSubtotal = addons.reduce((sum, addonId) => {
+    const item = currentAddonsList.find(a => a.id === addonId);
+    if (!item) return sum;
+    const itemMinutes = addonMinutes[addonId] || 30;
+    return sum + Math.round(getAddonPrice(item.price) * (itemMinutes / 30));
+  }, 0);
+  
+  const subtotalSingleVisit = serviceSubtotal + addonsSubtotal;
+  
+  // Calculate frequency multiplier: weekly = 4 visits/mo, monthly = 30 visits/mo
+  const frequencyMultiplier = activeTab === 'recurring' 
+    ? (recurringFrequency === 'weekly' ? 4 : 30) 
+    : 1;
+
+  const subtotal = subtotalSingleVisit * frequencyMultiplier;
+  const urgentAmount = (activeTab === 'instant' || isUrgent) ? URGENT_FEE : 0;
+  // Apply service fee per visit for recurring bookings
+  const serviceFeeTotal = FIXED_SERVICE_FEE * frequencyMultiplier;
+  const billSubtotal = subtotal + urgentAmount + serviceFeeTotal;
+  const gstAmount = billSubtotal * 0.18;
+  const finalTotal = billSubtotal + gstAmount - discount;
 
   const handleConfirm = async () => {
     if (!user && !profile) {
       Alert.alert('Login Required', 'Please login to confirm your booking.');
       return;
     }
-
     setIsBooking(true);
     try {
-      const fullAddress = (address || profile?.selectedAddress || '').toLowerCase();
-      const detectedCity = currentCityData?.name || 'Unknown';
-
       const dateStr = date.toDateString();
       const bookingData = {
         userId: (user?.uid || profile?.uid) ?? null,
@@ -185,18 +234,20 @@ export default function BookFlow() {
         userAddress: (address || profile?.selectedAddress || 'No Address') || 'No Address',
         service: (service?.title || service?.name) ?? 'Service',
         date: dateStr,
-        slot: isUrgent ? '30-45 mins' : slot,
+        slot: activeTab === 'instant' ? '30-45 mins' : slot,
         price: finalTotal.toFixed(2),
+        bookingType: activeTab,
         items: [{
           serviceId: (service?.id || id) ?? '',
           serviceName: (service?.title || service?.name) ?? 'Service',
           price: subtotal.toString(),
-          isUrgent: !!isUrgent,
+          isUrgent: activeTab === 'instant',
           date: dateStr,
           startTime: slot || 'ASAP',
-          frequency: frequency || 'one-time',
-          qty: qty || 1,
-          addons: addons || [],
+          frequency: activeTab === 'recurring' ? recurringFrequency : 'one-time',
+          qty: 1,
+          durationMinutes: mainMinutes,
+          addons: addons.map(aId => ({ id: aId, minutes: addonMinutes[aId] || 60 })),
         }],
         totalPrice: Number(finalTotal.toFixed(2)) || 0,
         discount: discount || 0,
@@ -208,14 +259,62 @@ export default function BookFlow() {
         paymentStatus: 'pending',
         paymentMethod: pay || 'UPI',
         createdAt: serverTimestamp(),
-        serviceCity: detectedCity || 'Unknown',
-        location: location ? { 
-          lat: location.coords.latitude ?? 0, 
-          lng: location.coords.longitude ?? 0 
-        } : null
+        serviceCity: currentCityData?.name || 'Unknown',
+        location: location ? { lat: location.coords.latitude ?? 0, lng: location.coords.longitude ?? 0 } : null,
       };
+      const docRef = await addDoc(collection(db, 'bookings'), bookingData);
 
-      await addDoc(collection(db, 'bookings'), bookingData);
+      // If recurring, generate Subscription and ServiceTasks
+      if (activeTab === 'recurring') {
+        const batch = writeBatch(db);
+        const subRef = doc(collection(db, 'subscriptions'));
+        
+        batch.set(subRef, {
+          bookingId: docRef.id,
+          customerId: user?.uid || profile?.uid || 'guest',
+          customerName: bookingData.userName,
+          frequency: recurringFrequency,
+          status: 'active',
+          createdAt: serverTimestamp()
+        });
+
+        // Generate dates
+        let numTasks = 0;
+        let step = 1; // days
+        if (recurringFrequency === 'daily_1_week') { numTasks = 7; step = 1; }
+        else if (recurringFrequency === 'alternate_1_week') { numTasks = 4; step = 2; }
+        else if (recurringFrequency === 'daily_1_month') { numTasks = 30; step = 1; }
+        else if (recurringFrequency === 'alternate_1_month') { numTasks = 15; step = 2; }
+        else if (recurringFrequency === 'weekly_1_month') { numTasks = 4; step = 7; }
+        else { numTasks = 1; step = 1; }
+
+        let currentDate = new Date(date);
+        for (let i = 0; i < numTasks; i++) {
+          const taskRef = doc(collection(db, 'serviceTasks'));
+          batch.set(taskRef, {
+            subscriptionId: subRef.id,
+            bookingId: docRef.id,
+            customerId: user?.uid || profile?.uid || 'guest',
+            assignedPartnerId: null,
+            status: 'pending_reassignment',
+            date: currentDate.toISOString(),
+            createdAt: serverTimestamp()
+          });
+          currentDate.setDate(currentDate.getDate() + step);
+        }
+
+        await batch.commit();
+      }
+      
+      if (location?.coords) {
+        socketService.emit('requestBooking', {
+          bookingId: docRef.id,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          radiusInKm: 5,
+          serviceName: bookingData.service
+        });
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDone(true);
     } catch (error) {
@@ -233,375 +332,467 @@ export default function BookFlow() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const removeCoupon = () => {
-    setCouponCode('');
-    setDiscount(0);
-  };
-
-  const AVAILABLE_OFFERS = [
-    { code: 'DIRTFREE50', description: 'Flat ₹50 off on your first booking', discount: 50 },
-    { code: 'FESTIVE100', description: 'Special ₹100 off on deep cleaning', discount: 100 },
-    { code: 'CLEAN20', description: '₹20 off on regular cleaning', discount: 20 },
-  ];
-
   if (loading) {
     return (
-      <View className="flex-1 bg-bg items-center justify-center">
+      <View style={{ flex: 1, backgroundColor: '#F8F9FB', alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color="#0E1220" />
       </View>
     );
   }
 
+  const TABS = [
+    { key: 'instant', label: 'Instant', icon: '⚡' },
+    { key: 'scheduled', label: 'Scheduled', icon: '📅' },
+    { key: 'recurring', label: 'Recurring', icon: '🔁' },
+  ];
+
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top"]}>
+    <View className="flex-1 bg-bg">
       <StatusBar style="dark" />
-      
+
       {/* Header */}
-      <View className="flex-row items-center gap-4 px-6 pt-2 pb-4">
-        <Pressable onPress={back} className="h-10 w-10 rounded-2xl bg-white items-center justify-center" style={LUMEN_SHADOW}>
-          <ArrowLeft size={18} color="#0E1220" />
-        </Pressable>
-        <View className="flex-1">
-          <Text className="text-[10px] text-muted font-bold uppercase tracking-[2px]">Step {step + 1} of 3</Text>
-          <Text className="text-[18px] font-bold text-fg">{["Customize", "Schedule", "Review & pay"][step]}</Text>
-        </View>
-      </View>
-
-      {/* Progress Bar */}
-      <View className="flex-row gap-2 px-6 mb-4">
-        {[0, 1, 2].map((i) => (
-          <View key={i} className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: i <= step ? "#0E1220" : "#E7E8EC" }} />
-        ))}
-      </View>
-
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
-        {/* Service Summary Card */}
-        <Animated.View entering={FadeIn.duration(400)} className="flex-row gap-4 bg-white rounded-[32px] p-4 mb-8" style={LUMEN_SHADOW}>
-          <Image 
-            source={service?.img || { uri: service?.imageUrl || 'https://via.placeholder.com/150' }} 
-            className="w-20 h-20 rounded-2xl" 
-          />
-          <View className="flex-1 justify-center">
-            <Text className="text-[16px] font-bold text-fg">{service?.title || service?.name}</Text>
-            <Text className="text-[12px] text-muted mb-1">{service?.tagline || "Professional cleaning service"}</Text>
-            <Text className="text-[16px] font-bold text-fg">₹{service?.price}</Text>
+      <SafeAreaView edges={['top']} className="bg-white border-b border-border">
+        <View className="flex-row items-center px-4 py-3 gap-3">
+          <Pressable
+            onPress={() => router.back()}
+            className="w-9 h-9 rounded-xl bg-bg items-center justify-center"
+          >
+            <ArrowLeft size={16} color="#0E1220" />
+          </Pressable>
+          <View className="flex-1">
+            <Text className="text-[16px] font-bold text-fg" numberOfLines={1}>
+              {service?.title || service?.name || 'Book Service'}
+            </Text>
+            <Text className="text-[11px] text-muted mt-0.5">
+              {activeTab === 'instant' ? 'Arrives in 30–45 min' : activeTab === 'recurring' ? 'Auto-scheduled visits' : 'Pick a date & slot'}
+            </Text>
           </View>
-        </Animated.View>
+          <View className="bg-success/10 px-2.5 py-1 rounded-full">
+            <Text className="text-[12px] font-bold text-success">₹{finalTotal.toFixed(0)}</Text>
+          </View>
+        </View>
 
-        {step === 0 && (
-          <Animated.View entering={FadeInDown.duration(400)}>
-            <Text className="text-[14px] font-bold text-fg mb-3 ml-1">Frequency</Text>
-            <View className="flex-row gap-3 mb-8">
-              {FREQUENCIES.map((f) => (
-                <Pressable 
-                  key={f.id} 
-                  onPress={() => setFrequency(f.id)}
-                  className={`flex-1 h-12 rounded-2xl items-center justify-center border ${frequency === f.id ? 'bg-fg border-fg' : 'bg-white border-gray-100'}`}
-                  style={frequency !== f.id ? LUMEN_SHADOW : {}}
-                >
-                  <Text className={`text-[13px] font-bold ${frequency === f.id ? 'text-white' : 'text-muted'}`}>{f.label}</Text>
-                </Pressable>
-              ))}
+        {/* Tab Switcher */}
+        <View className="flex-row px-4 pb-3 gap-2">
+          {TABS.map(tab => {
+            const active = activeTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab.key as any); }}
+                className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center gap-1 ${active ? 'bg-fg' : 'bg-bg'}`}
+              >
+                <Text className="text-[12px]">{tab.icon}</Text>
+                <Text className={`text-[12px] font-bold ${active ? 'text-white' : 'text-muted'}`}>{tab.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </SafeAreaView>
+
+      <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
+
+        {/* Service Card */}
+        <View className="mx-4 mb-2.5 bg-white rounded-2xl p-3.5 border border-border/60" style={S}>
+          <View className="flex-row items-center gap-3">
+            <Image
+              source={service?.img || { uri: service?.imageUrl || 'https://via.placeholder.com/80' }}
+              className="w-14 h-14 rounded-xl bg-bg"
+            />
+            <View className="flex-1">
+              <Text className="text-[14px] font-bold text-fg mb-0.5" numberOfLines={2}>
+                {service?.title || service?.name}
+              </Text>
+              <View className="flex-row items-center gap-1.5">
+                {(activeTab === 'instant' || activeTab === 'recurring') && (
+                  <Text className="text-[11px] text-muted line-through">₹{service?.price}</Text>
+                )}
+                <Text className="text-[15px] font-extrabold text-fg">₹{baseServicePrice}</Text>
+                {activeTab === 'recurring' && (
+                  <View className="bg-success/15 px-1.5 py-0.5 rounded">
+                    <Text className="text-[10px] font-bold text-success">20% OFF</Text>
+                  </View>
+                )}
+              </View>
             </View>
 
-
-
-            <Text className="text-[14px] font-bold text-fg mb-3 ml-1">Add-ons</Text>
-            {currentAddonsList.map((a) => {
-              const on = addons.includes(a.id);
-              return (
-                <Pressable 
-                  key={a.id} 
-                  onPress={() => setAddons(on ? addons.filter(x => x !== a.id) : [...addons, a.id])} 
-                  className="flex-row items-center bg-white rounded-3xl px-5 py-4 mb-3" 
-                  style={LUMEN_SHADOW}
-                >
-                  <View className={`h-6 w-6 rounded-lg mr-4 items-center justify-center ${on ? 'bg-fg' : 'bg-gray-100'}`}>
-                    {on && <Check size={14} color="#fff" />}
-                  </View>
-                  <Text className="flex-1 text-[14px] font-semibold text-fg">{a.label}</Text>
-                  <Text className="text-[14px] font-bold text-success">+₹{a.price}</Text>
+            {/* Duration stepper */}
+            <View className="items-center border border-border bg-bg rounded-xl px-2 py-1.5 min-w-[76px]">
+              <View className="flex-row items-center gap-2">
+                <Pressable onPress={() => { if (mainMinutes > 30) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMainMinutes(mainMinutes - 30); } }} className="px-1">
+                  <Text className="text-[16px] font-bold text-fg">−</Text>
                 </Pressable>
-              );
-            })}
+                <Text className="text-[13px] font-bold text-fg">{mainMinutes}m</Text>
+                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMainMinutes(mainMinutes + 30); }} className="px-1">
+                  <Text className="text-[16px] font-bold text-fg">+</Text>
+                </Pressable>
+              </View>
+              <Text className="text-[9px] text-muted mt-0.5 uppercase tracking-widest">Duration</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Instant mode banner */}
+        {activeTab === 'instant' && (
+          <Animated.View entering={FadeIn} className="mx-4 mb-2.5 bg-amber-50/50 rounded-xl p-3 flex-row gap-3 items-center border border-amber-200">
+            <Text className="text-[20px]">⚡</Text>
+            <View className="flex-1">
+              <Text className="text-[13px] font-bold text-amber-800">Instant Booking — ₹{baseServicePrice} + ₹{URGENT_FEE} priority fee</Text>
+              <Text className="text-[11px] text-amber-700/80 mt-0.5">A professional will arrive within 30–45 minutes</Text>
+            </View>
+            {isPartnerAvailable === false && (
+              <View className="bg-danger/10 px-2 py-1 rounded-lg">
+                <Text className="text-[10px] font-bold text-danger">FULL</Text>
+              </View>
+            )}
           </Animated.View>
         )}
 
-        {step === 1 && (
-          <Animated.View entering={FadeInDown.duration(400)}>
-            <Text className="text-[14px] font-bold text-fg mb-4 ml-1">Pick a date</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 10 }}>
+        {/* Recurring banner */}
+        {activeTab === 'recurring' && (
+          <Animated.View entering={FadeIn} className="mx-4 mb-2.5 bg-success/10 rounded-xl p-3 flex-row gap-3 items-center border border-success/20">
+            <Text className="text-[20px]">🔁</Text>
+            <View className="flex-1">
+              <Text className="text-[13px] font-bold text-success">Recurring — Save 20% every visit</Text>
+              <Text className="text-[11px] text-success/80 mt-0.5">Auto-scheduled, same slot every time</Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Addons */}
+        {activeTab !== 'instant' && currentAddonsList.length > 0 && (
+          <View className="mx-4 mb-2.5 bg-white rounded-2xl border border-border/60 overflow-hidden" style={S}>
+            <View className="p-3.5 pb-2 border-b border-bg">
+              <Text className="text-[13px] font-bold text-fg">Add-ons</Text>
+            </View>
+            {currentAddonsList.map((a, idx) => {
+              const on = addons.includes(a.id);
+              return (
+                <Pressable
+                  key={a.id}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAddons(on ? addons.filter(x => x !== a.id) : [...addons, a.id]); }}
+                  className="flex-row items-center px-3.5 py-3 border-b border-bg last:border-b-0 gap-3"
+                >
+                  <View className={`w-5 h-5 rounded-md items-center justify-center border ${on ? 'bg-fg border-fg' : 'bg-bg border-border'}`}>
+                    {on && <Check size={11} color="#fff" />}
+                  </View>
+                  <Text className="flex-1 text-[13px] text-fg font-medium">{a.label}</Text>
+                  <Text className="text-[13px] font-bold text-fg">+₹{getAddonPrice(a.price)}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Date & Slot — Scheduled only */}
+        {activeTab === 'scheduled' && (
+          <View className="mx-4 mb-2.5 bg-white rounded-2xl p-3.5 border border-border/60" style={S}>
+            <Text className="text-[13px] font-bold text-fg mb-2.5">Date & Time</Text>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
               {dates.map((d, i) => {
                 const on = d.toDateString() === date.toDateString();
                 const isToday = d.toDateString() === new Date().toDateString();
                 const day = d.toLocaleDateString('en-US', { weekday: 'short' });
                 const num = d.getDate();
-
-                // Check if all slots for today have passed
-                const currentHour = new Date().getHours();
-                const lastSlotHour = 19; // 7:00 PM is 19:00
-                const allSlotsPassed = isToday && (currentHour >= lastSlotHour);
-
+                const allSlotsPassed = isToday && new Date().getHours() >= 19;
                 return (
-                  <Pressable 
-                    key={i} 
-                    onPress={() => setDate(d)} 
-                    disabled={isUrgent || (allSlotsPassed && !isUrgent)}
-                    className={`rounded-[24px] w-20 py-4 items-center border ${on ? 'bg-fg border-fg' : 'bg-white border-gray-50'} ${(isUrgent || (allSlotsPassed && !isUrgent)) ? 'opacity-30' : 'opacity-100'}`}
-                    style={!on ? LUMEN_SHADOW : {}}
+                  <Pressable
+                    key={i}
+                    onPress={() => setDate(d)}
+                    disabled={allSlotsPassed && !isUrgent}
+                    className={`w-12 py-2.5 rounded-xl items-center justify-center ${on ? 'bg-fg' : 'bg-bg'} ${allSlotsPassed ? 'opacity-40' : ''}`}
                   >
-                    <Text className={`text-[11px] font-bold uppercase tracking-wider ${on ? 'text-white/60' : 'text-muted'}`}>{day}</Text>
-                    <Text className={`text-[20px] font-bold mt-1 ${on ? 'text-white' : 'text-fg'}`}>{num}</Text>
-                    {allSlotsPassed && !isUrgent && <Text className="text-[8px] text-red-500 font-bold">FULL</Text>}
+                    <Text className={`text-[10px] font-bold uppercase ${on ? 'text-white/60' : 'text-muted'}`}>{day}</Text>
+                    <Text className={`text-[15px] font-bold mt-0.5 ${on ? 'text-white' : 'text-fg'}`}>{num}</Text>
+                    {isToday && <Text className="text-[7px] text-success font-extrabold mt-0.5">TODAY</Text>}
                   </Pressable>
                 );
               })}
             </ScrollView>
 
-            <Text className="text-[14px] font-bold text-fg mt-8 mb-4 ml-1">Available time slots</Text>
-            <View className="flex-row flex-wrap gap-3">
+            <View className="flex-row flex-wrap justify-between gap-y-2 mt-4">
               {SLOTS.map((s) => {
                 const on = s === slot;
                 const isToday = date.toDateString() === new Date().toDateString();
-                
-                // Parse slot time (e.g., "10:00 AM") to 24h format
                 const [time, period] = s.split(' ');
                 let hour = parseInt(time.split(':')[0]);
                 if (period === 'PM' && hour !== 12) hour += 12;
                 if (period === 'AM' && hour === 12) hour = 0;
-                
-                const currentHour = new Date().getHours();
-                // Disable slot if it's today and time has passed (give 1 hour buffer)
-                const isPassed = isToday && (currentHour >= hour - 1);
-
+                const isPassed = isToday && new Date().getHours() >= hour - 1;
                 return (
-                  <Pressable 
-                    key={s} 
-                    onPress={() => !isPassed && setSlot(s)} 
-                    disabled={isUrgent || isPassed}
-                    className={`rounded-2xl px-4 py-4 items-center border ${on ? 'bg-fg border-fg' : 'bg-white border-gray-50'} ${(isUrgent || isPassed) ? 'opacity-30' : 'opacity-100'}`}
-                    style={[{ width: '31%' }, !on && LUMEN_SHADOW]}
+                  <Pressable
+                    key={s}
+                    onPress={() => !isPassed && setSlot(s)}
+                    disabled={isPassed}
+                    className={`py-2.5 rounded-xl flex-row justify-center items-center ${on ? 'bg-fg' : 'bg-bg'} ${isPassed ? 'opacity-35' : ''}`}
+                    style={{ width: '48.5%' }}
                   >
                     <Text className={`text-[12px] font-bold ${on ? 'text-white' : 'text-fg'}`}>{s}</Text>
-                    {isPassed && !isUrgent && <Text className="text-[8px] text-red-500 font-black mt-1">PASSED</Text>}
+                    {isPassed && <Text className="text-[9px] text-danger font-bold ml-1">PASSED</Text>}
                   </Pressable>
                 );
               })}
             </View>
-
-            <View className="mt-10 p-5 bg-blue-50 rounded-3xl flex-row gap-4 items-center">
-              <Clock size={20} color="#3B6BFF" />
-              <Text className="text-[13px] text-blue-700 font-medium flex-1">Our professionals will arrive within 30 mins of your selected slot.</Text>
-            </View>
-
-            {/* Quick/Urgent Booking Option */}
-            <Pressable 
-              onPress={() => {
-                const newUrgent = !isUrgent;
-                setIsUrgent(newUrgent);
-                if (newUrgent) {
-                  setDate(new Date()); // Set to today if urgent
-                }
-              }}
-              className={`mt-6 p-6 rounded-[32px] border-2 flex-row items-center gap-4 ${isUrgent ? 'bg-fg border-fg' : 'bg-orange-50 border-orange-100'}`}
-              style={!isUrgent ? LUMEN_SHADOW : {}}
-            >
-              <View className={`h-14 w-14 rounded-2xl items-center justify-center ${isUrgent ? 'bg-white/20' : 'bg-orange-100'}`}>
-                <Sparkles size={24} color={isUrgent ? "#fff" : "#EA580C"} />
-              </View>
-              <View className="flex-1">
-                <Text className={`text-[16px] font-bold ${isUrgent ? 'text-white' : 'text-fg'}`}>Quick Service (Urgent)</Text>
-                <Text className={`text-[12px] font-medium mt-0.5 ${isUrgent ? 'text-white/70' : 'text-muted'}`}>Arrives within 30 mins • +₹{URGENT_FEE}</Text>
-              </View>
-              <View className={`h-6 w-6 rounded-full border-2 items-center justify-center ${isUrgent ? 'bg-white border-white' : 'border-orange-200'}`}>
-                {isUrgent && <Check size={14} color="#000" strokeWidth={3} />}
-              </View>
-            </Pressable>
-          </Animated.View>
+          </View>
         )}
 
-        {step === 2 && (
-          <Animated.View entering={FadeInDown.duration(400)}>
-            <View className="flex-row items-center gap-4 bg-white rounded-3xl p-4 mb-8" style={LUMEN_SHADOW}>
-              <View className="h-12 w-12 rounded-full bg-success/10 items-center justify-center">
-                <ShieldCheck size={24} color="#22C58A" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-[14px] font-bold text-fg">Service Guarantee</Text>
-                <Text className="text-[11px] text-muted">Free re-cleaning if not satisfied</Text>
-              </View>
+
+
+        {/* Coupon — not recurring */}
+        {activeTab !== 'recurring' && (
+          <Pressable
+            onPress={() => setIsCouponModalVisible(true)}
+            className="mx-4 mb-2.5 bg-white rounded-2xl p-3.5 flex-row items-center gap-3 border border-border/60"
+            style={S}
+          >
+            <View className={`w-8 h-8 rounded-lg items-center justify-center ${couponCode ? 'bg-success/10' : 'bg-bg'}`}>
+              <Tag size={14} color={couponCode ? '#22C58A' : '#6B7280'} />
             </View>
-
-            <Text className="text-[14px] font-bold text-fg mb-4 ml-1">Payment Method</Text>
-            <View className="flex-row flex-wrap gap-3 mb-8">
-              {["UPI", "Card", "Cash", "Wallet"].map((p) => {
-                const on = p === pay;
-                return (
-                  <Pressable 
-                    key={p} 
-                    onPress={() => setPay(p)} 
-                    className={`rounded-2xl py-4 items-center border ${on ? 'bg-fg border-fg' : 'bg-white border-gray-50'}`}
-                    style={[{ width: '48%' }, !on && LUMEN_SHADOW]}
-                  >
-                    <Text className={`text-[14px] font-bold ${on ? 'text-white' : 'text-fg'}`}>{p}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text className="text-[14px] font-bold text-fg mb-4 ml-1">Review & Discounts</Text>
-            <Pressable 
-              onPress={() => setIsCouponModalVisible(true)}
-              className={`flex-row items-center bg-white rounded-3xl p-5 mb-6 border ${couponCode ? 'border-success' : 'border-transparent'}`}
-              style={LUMEN_SHADOW}
-            >
-              <View className={`h-12 w-12 rounded-2xl items-center justify-center ${couponCode ? 'bg-success/10' : 'bg-gray-100'}`}>
-                <Ionicons name="pricetag" size={24} color={couponCode ? "#22C58A" : "#64748b"} />
-              </View>
-              <View className="flex-1 ml-4">
-                <Text className="text-[15px] font-bold text-fg">{couponCode ? `Applied: ${couponCode}` : 'Apply Coupon'}</Text>
-                <Text className="text-[12px] text-muted">{couponCode ? `You saved ₹${discount}!` : 'Check available offers'}</Text>
-              </View>
-              {couponCode ? (
-                <Pressable onPress={removeCoupon}>
-                  <Text className="text-red-500 font-bold text-[13px]">Remove</Text>
-                </Pressable>
-              ) : (
-                <ChevronRight size={20} color="#9ca3af" />
-              )}
-            </Pressable>
-
-            <Text className="text-[14px] font-bold text-fg mb-4 ml-1">Payment Summary</Text>
-            <View className="bg-white rounded-[32px] p-6 mb-8" style={LUMEN_SHADOW}>
-              <Row label="Base Price" value={`₹${(service?.price || 0) * qty}`} />
-              
-              {addons.map(addonId => {
-                const addOnItem = currentAddonsList.find(a => a.id === addonId);
-                if (!addOnItem) return null;
-                return (
-                  <Row 
-                    key={addonId} 
-                    label={`+ ${addOnItem.label}`} 
-                    value={`₹${addOnItem.price}`} 
-                    color="#22C58A"
-                  />
-                );
-              })}
-              
-              <View className="h-px bg-gray-100 my-3" />
-              <Row label="Item Total" value={`₹${subtotal}`} />
-              <Row label="Service Fee" value={`₹${FIXED_SERVICE_FEE}`} />
-              {isUrgent && <Row label="Urgent Handling" value={`₹${URGENT_FEE}`} color="#EA580C" />}
-              <Row label="GST (18%)" value={`₹${gstAmount.toFixed(2)}`} />
-              {discount > 0 && <Row label="Discount" value={`-₹${discount}`} color="#22C58A" />}
-              <View className="h-px bg-gray-100 my-4" />
-              <View className="flex-row justify-between items-center">
-                <Text className="text-[18px] font-bold text-fg">Grand Total</Text>
-                <Text className="text-[20px] font-black text-fg">₹{finalTotal.toFixed(2)}</Text>
-              </View>
-              <View className="flex-row items-center bg-blue-50/50 p-3 rounded-2xl mt-4 border border-blue-100">
-                <Sparkles size={16} color="#3B6BFF" />
-                <Text className="text-[11px] text-blue-700 font-bold ml-2">Secure payment with DirtFree Protection</Text>
-              </View>
-            </View>
-
-            <Text className="text-[14px] font-bold text-fg mb-4 ml-1">Selected Address</Text>
-            <View className="bg-white rounded-3xl p-5 mb-8 flex-row items-center gap-4" style={LUMEN_SHADOW}>
-              <View className="h-10 w-10 rounded-full bg-fg/5 items-center justify-center">
-                <Ionicons name="location" size={20} color="#0E1220" />
-              </View>
-              <Text className="flex-1 text-[13px] text-muted font-medium" numberOfLines={2}>
-                {address || profile?.selectedAddress || 'Add your address in profile'}
+            <View className="flex-1">
+              <Text className="text-[13px] font-bold text-fg">
+                {couponCode ? `${couponCode} applied` : 'Apply coupon'}
               </Text>
+              {couponCode && <Text className="text-[11px] text-success mt-0.5">You saved ₹{discount}</Text>}
             </View>
-          </Animated.View>
+            {couponCode ? (
+              <Pressable onPress={() => { setCouponCode(''); setDiscount(0); }} className="px-2 py-1 rounded bg-danger/10">
+                <Text className="text-[11px] font-bold text-danger">Remove</Text>
+              </Pressable>
+            ) : (
+              <ChevronRight size={14} color="#9CA3AF" />
+            )}
+          </Pressable>
         )}
-      </ScrollView>
 
-      {/* Sticky Footer Button */}
-      <View className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-50">
-        <Pressable 
-          onPress={step === 2 ? handleConfirm : next} 
-          disabled={isBooking}
-          className={`bg-fg h-16 rounded-[24px] flex-row items-center justify-center gap-3 ${isBooking ? 'opacity-70' : 'opacity-100'}`}
-          style={LUMEN_SHADOW}
-        >
-          {isBooking ? (
-            <ActivityIndicator color="#fff" />
+        {/* Bill Summary */}
+        <View className="mx-4 mb-2.5 bg-white rounded-2xl p-4 border border-border/60" style={S}>
+          <Text className="text-[13px] font-bold text-fg mb-3">Bill Summary</Text>
+          
+          {activeTab === 'recurring' ? (
+            <>
+              {/* Premium Breakdown row */}
+              <View className="bg-bg rounded-xl p-3 mb-3 border border-border/40">
+                <View className="flex-row justify-between items-center mb-2">
+                  <Text className="text-[11px] font-bold text-muted uppercase tracking-wider">Per Visit Breakdown</Text>
+                  <View className="bg-success/10 px-2 py-0.5 rounded-full">
+                    <Text className="text-[10px] font-bold text-success">20% Off Applied</Text>
+                  </View>
+                </View>
+                <BillRow label={`${service?.title || 'Service'} (${mainMinutes}m)`} value={`₹${serviceSubtotal}`} />
+                {addons.map(addonId => {
+                  const item = currentAddonsList.find(a => a.id === addonId);
+                  if (!item) return null;
+                  const itemMinutes = addonMinutes[addonId] || 30;
+                  const adj = Math.round(getAddonPrice(item.price) * (itemMinutes / 30));
+                  return <BillRow key={addonId} label={item.label} value={`₹${adj}`} />;
+                })}
+                <BillRow label="Service fee" value={`₹${FIXED_SERVICE_FEE}`} />
+                <View className="h-[1px] bg-border/40 my-2" />
+                <View className="flex-row justify-between items-center">
+                  <Text className="text-[12px] font-bold text-fg">Price per visit</Text>
+                  <Text className="text-[12px] font-extrabold text-fg">₹{subtotalSingleVisit + FIXED_SERVICE_FEE}</Text>
+                </View>
+              </View>
+
+              {/* Package Summary */}
+              <View className="flex-row justify-between py-1.5 items-center">
+                <Text className="text-[12px] text-muted font-medium">Subscription Cycle</Text>
+                <View className="bg-fg px-2.5 py-0.5 rounded-full">
+                  <Text className="text-[11px] font-bold text-white uppercase tracking-wide">
+                    {recurringFrequency === 'weekly' ? 'Weekly (4 visits)' : 'Daily (30 visits)'}
+                  </Text>
+                </View>
+              </View>
+              <BillRow label="Visits Subtotal" value={`₹${(subtotalSingleVisit + FIXED_SERVICE_FEE) * frequencyMultiplier}`} />
+            </>
           ) : (
             <>
-              <Text className="text-white font-bold text-[16px]">
-                {step === 2 ? `Pay ₹${finalTotal.toFixed(2)}` : "Continue"}
-              </Text>
-              <ChevronRight size={20} color="#fff" />
+              <BillRow label={`${service?.title || 'Service'} (${mainMinutes}m)`} value={`₹${serviceSubtotal}`} />
+              {addons.map(addonId => {
+                const item = currentAddonsList.find(a => a.id === addonId);
+                if (!item) return null;
+                const itemMinutes = addonMinutes[addonId] || 30;
+                const adj = Math.round(getAddonPrice(item.price) * (itemMinutes / 30));
+                return <BillRow key={addonId} label={`${item.label} (${itemMinutes}m)`} value={`₹${adj}`} />;
+              })}
+              <BillRow label="Service fee" value={`₹${FIXED_SERVICE_FEE}`} />
             </>
           )}
-        </Pressable>
+
+          {urgentAmount > 0 && <BillRow label="Priority Booking Fee" value={`₹${urgentAmount}`} />}
+          <BillRow label="GST (18%)" value={`₹${gstAmount.toFixed(0)}`} />
+          {discount > 0 && <BillRow label="Discount" value={`−₹${discount}`} color="#22C58A" />}
+          <View className="h-[1px] bg-bg my-2.5" />
+          <View className="flex-row justify-between items-center">
+            <Text className="text-[14px] font-extrabold text-fg">Total amount to pay</Text>
+            <Text className="text-[16px] font-black text-fg">₹{finalTotal.toFixed(0)}</Text>
+          </View>
+        </View>
+
+        {/* Recurring Settings Inline */}
+        {activeTab === 'recurring' && (
+          <View className="mx-4 mb-2.5 bg-white rounded-2xl p-3.5 border border-border/60" style={S}>
+            <Text className="text-[13px] font-bold text-fg mb-3">Subscription Setup</Text>
+
+            <Text className="text-[11px] font-bold text-muted uppercase tracking-wider mb-2">Frequency</Text>
+            <View className="flex-row gap-2 mb-4">
+              {[['weekly', 'Weekly (4 visits)'], ['monthly', 'Monthly (30 visits)']].map(([freq, label]) => {
+                const sel = recurringFrequency === freq;
+                return (
+                  <Pressable key={freq} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setRecurringFrequency(freq); }}
+                    className={`flex-1 py-2.5 rounded-xl items-center justify-center ${sel ? 'bg-fg' : 'bg-bg'}`}>
+                    <Text className={`text-[12px] font-bold ${sel ? 'text-white' : 'text-muted'}`}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text className="text-[11px] font-bold text-muted uppercase tracking-wider mb-2">Start Date</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
+              {dates.map((d, i) => {
+                const on = d.toDateString() === date.toDateString();
+                return (
+                  <Pressable key={i} onPress={() => setDate(d)}
+                    className={`w-12 py-2 rounded-xl items-center justify-center ${on ? 'bg-fg' : 'bg-bg'}`}>
+                    <Text className={`text-[9px] font-bold uppercase ${on ? 'text-white/60' : 'text-muted'}`}>
+                      {d.toLocaleDateString('en-US', { weekday: 'short' })}
+                    </Text>
+                    <Text className={`text-[14px] font-bold mt-0.5 ${on ? 'text-white' : 'text-fg'}`}>{d.getDate()}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Text className="text-[11px] font-bold text-muted uppercase tracking-wider mt-3 mb-2">Preferred Slot</Text>
+            <View className="flex-row flex-wrap justify-between gap-y-2">
+              {SLOTS.map(s => {
+                const on = s === slot;
+                return (
+                  <Pressable key={s} onPress={() => setSlot(s)}
+                    className={`py-2 rounded-lg flex-row justify-center items-center ${on ? 'bg-fg' : 'bg-bg'}`}
+                    style={{ width: '48.5%' }}
+                  >
+                    <Text className={`text-[12px] font-bold ${on ? 'text-white' : 'text-fg'}`}>{s}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Address */}
+        <View className="mx-4 mb-2.5 bg-white rounded-2xl p-3.5 flex-row gap-3 items-center border border-border/60" style={S}>
+          <MapPin size={14} color="#6B7280" />
+          <Text className="flex-1 text-[12px] text-muted leading-relaxed" numberOfLines={2}>
+            {address || profile?.selectedAddress || 'Add your address in profile'}
+          </Text>
+        </View>
+      </ScrollView>
+
+      {/* Bottom CTA */}
+      <View className="absolute bottom-0 left-0 right-0 bg-white p-4 pb-7 border-t border-border">
+        {activeTab === 'instant' && isPartnerAvailable === false ? (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setActiveTab('scheduled'); }}
+            className="bg-fg h-14 rounded-2xl flex-row items-center justify-center gap-2"
+          >
+            <Text className="text-white font-bold text-[15px]">Switch to Scheduled</Text>
+            <ChevronRight size={18} color="#fff" />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={handleConfirm}
+            disabled={isBooking}
+            className="bg-fg h-14 rounded-2xl flex-row items-center justify-between px-5"
+            style={{ opacity: isBooking ? 0.7 : 1 }}
+          >
+            {isBooking ? (
+              <View className="flex-1 items-center justify-center">
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : (
+              <>
+                <Text className="text-white font-extrabold text-[15px] tracking-wide">
+                  {activeTab === 'instant' 
+                    ? `Confirm Instant` 
+                    : activeTab === 'recurring'
+                    ? `Subscribe & Pay`
+                    : `Confirm & Pay`}
+                </Text>
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-white font-bold text-[15px]">₹{finalTotal.toFixed(0)}</Text>
+                  <View className="bg-white/20 rounded-full p-1">
+                    <ChevronRight size={14} color="#fff" />
+                  </View>
+                </View>
+              </>
+            )}
+          </Pressable>
+        )}
       </View>
 
       {/* Success Modal */}
       <Modal visible={done} transparent animationType="fade">
-        <View className="flex-1 items-center justify-center bg-black/60 px-8">
-          <Animated.View entering={ZoomIn.duration(400)} className="bg-white rounded-[40px] p-8 items-center w-full">
-            <View className="h-20 w-20 rounded-full bg-success/20 items-center justify-center mb-6">
-              <CheckCircle2 size={40} color="#22C58A" />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 24 }}>
+          <Animated.View entering={ZoomIn} style={{ backgroundColor: '#fff', borderRadius: 24, padding: 28, alignItems: 'center', width: '100%' }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#F0FFF8', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <CheckCircle2 size={32} color="#22C58A" />
             </View>
-            <Text className="text-[24px] font-bold text-fg text-center">Booking Confirmed!</Text>
-            <Text className="text-[14px] text-muted text-center mt-2 mb-8">
-              We've assigned a top-rated pro for your {service?.title || service?.name || 'service'}. 
-              {isUrgent 
-                ? "\nThey will arrive within 30-45 minutes." 
-                : `\nScheduled for ${date.toDateString().split(' ').slice(1, 3).join(' ')} at ${slot}.`
-              }
+            <Text style={{ fontSize: 20, fontWeight: '800', color: '#0E1220', textAlign: 'center' }}>Booking Confirmed!</Text>
+            <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', marginTop: 8, marginBottom: 24, lineHeight: 20 }}>
+              {activeTab === 'instant'
+                ? "Your professional is on the way. ETA 30–45 mins."
+                : activeTab === 'recurring'
+                ? `Repeating ${recurringFrequency} from ${date.toDateString().split(' ').slice(1, 3).join(' ')} at ${slot}.`
+                : `Scheduled for ${date.toDateString().split(' ').slice(1, 3).join(' ')} at ${slot}.`}
             </Text>
-            <Pressable 
-              onPress={() => { setDone(false); router.replace("/(tabs)/bookings"); }} 
-              className="bg-fg rounded-3xl h-14 w-full items-center justify-center"
+            <Pressable
+              onPress={() => { setDone(false); router.replace("/(tabs)/bookings"); }}
+              style={{ backgroundColor: '#0E1220', borderRadius: 14, height: 48, width: '100%', alignItems: 'center', justifyContent: 'center' }}
             >
-              <Text className="text-white font-bold text-[15px]">View My Bookings</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>View My Bookings</Text>
             </Pressable>
           </Animated.View>
         </View>
       </Modal>
 
-      {/* Coupons Modal */}
+      {/* Coupon Modal */}
       <Modal visible={isCouponModalVisible} animationType="slide" transparent>
-        <View className="flex-1 bg-black/50 justify-end">
-          <Pressable className="flex-1" onPress={() => setIsCouponModalVisible(false)} />
-          <Animated.View entering={FadeInDown} className="bg-white rounded-t-[40px] p-8 min-h-[400px]">
-            <View className="w-12 h-1.5 bg-gray-100 rounded-full self-center mb-6" />
-            <Text className="text-[22px] font-black text-fg mb-6">Available Offers</Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {AVAILABLE_OFFERS.map((offer) => (
-                <Pressable 
-                  key={offer.code}
-                  onPress={() => applyCoupon(offer.code, offer.discount)}
-                  className="flex-row items-center bg-gray-50 rounded-3xl p-5 mb-4 border border-gray-100"
-                >
-                  <View className="flex-1">
-                    <View className="bg-success/10 self-start px-3 py-1 rounded-lg mb-2">
-                      <Text className="text-success font-black text-[12px]">{offer.code}</Text>
-                    </View>
-                    <Text className="text-[14px] font-bold text-fg">{offer.description}</Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setIsCouponModalVisible(false)} />
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 }}>
+            <View style={{ width: 36, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0E1220', marginBottom: 14 }}>Available Offers</Text>
+            {AVAILABLE_OFFERS.map((offer) => (
+              <Pressable
+                key={offer.code}
+                onPress={() => applyCoupon(offer.code, offer.discount)}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FB', borderRadius: 14, padding: 14, marginBottom: 10, gap: 12 }}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={{ backgroundColor: '#E7E8EC', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginBottom: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#0E1220' }}>{offer.code}</Text>
                   </View>
-                  <View className="h-10 w-10 rounded-full bg-white items-center justify-center" style={LUMEN_SHADOW}>
-                    <ChevronRight size={20} color="#0E1220" />
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Animated.View>
+                  <Text style={{ fontSize: 12, color: '#374151', fontWeight: '500' }}>{offer.description}</Text>
+                </View>
+                <View style={{ backgroundColor: '#F0FFF8', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#22C58A' }}>₹{offer.discount} OFF</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
-function Row({ label, value, color }: { label: string; value: string; color?: string }) {
+function BillRow({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <View className="flex-row justify-between py-2">
-      <Text className="text-[14px] text-muted font-bold">{label}</Text>
-      <Text className="text-[14px] font-black" style={{ color: color || "#0E1220" }}>{value}</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 }}>
+      <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: '500' }}>{label}</Text>
+      <Text style={{ fontSize: 12, fontWeight: '700', color: color || '#0E1220' }}>{value}</Text>
     </View>
   );
 }

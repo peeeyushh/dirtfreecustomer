@@ -117,6 +117,13 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     fetchOperatingCities();
   }, []);
 
+  // Re-evaluate serviceability whenever address, cities list, or location changes to prevent race conditions
+  useEffect(() => {
+    if (address) {
+      setIsServiceable(checkServiceability(address));
+    }
+  }, [address, allCities, location]);
+
   // Primary check: GPS coordinates vs city circles
   const checkServiceabilityByCoords = (userLat: number, userLng: number): boolean => {
     if (serviceableCities.length === 0) return true; // Allow if cities not loaded yet
@@ -171,7 +178,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
       if (address) {
         const addrLower = address.toLowerCase();
-        const city = allCities.find(c => addrLower.includes(c.name));
+        const city = allCities.find(c => addrLower.includes((c.name || '').toLowerCase()));
         if (city) {
           setCurrentCityData(city);
         }
@@ -335,7 +342,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const setManualAddress = async (addr: string, lat?: number, lng?: number) => {
     let serviceable = false;
     if (lat !== undefined && lng !== undefined) {
-      serviceable = checkServiceabilityByCoords(lat, lng);
+      // Ensure we check BOTH coords and name so it doesn't flash false then true
+      serviceable = checkServiceabilityByCoords(lat, lng) || checkServiceabilityByName(addr);
       
       // Update location coords so that booking flow picks up manual coords
       setLocation({

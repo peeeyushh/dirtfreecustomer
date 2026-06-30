@@ -1,8 +1,8 @@
 import '../global.css';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRootNavigationState } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -15,17 +15,6 @@ import GlobalNotificationListener from '../components/GlobalNotificationListener
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const navigationState = useRootNavigationState();
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    if (navigationState?.key) {
-      setIsReady(true);
-    }
-  }, [navigationState]);
-
-  // Prevent rendering anything that uses navigation hooks until the context is ready
-  if (!isReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -128,7 +128,7 @@ export default function AddressesScreen() {
 
 function AddressCard({ icon, title, address, onSelect, onDelete, delay }: any) {
   return (
-    <Animated.View entering={FadeInDown.delay(delay).duration(600)}>
+    <View>
       <Pressable 
         onPress={onSelect}
         className="flex-row items-center bg-white rounded-[32px] p-5 mb-4 border border-gray-50"
@@ -148,7 +148,7 @@ function AddressCard({ icon, title, address, onSelect, onDelete, delay }: any) {
           <Trash2 size={16} color="#ef4444" />
         </Pressable>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 

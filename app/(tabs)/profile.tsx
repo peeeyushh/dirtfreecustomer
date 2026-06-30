@@ -143,9 +143,7 @@ export default function ProfileScreen() {
           contentContainerStyle={{ paddingBottom: 140 }}
         >
           {/* Luxe Profile Card */}
-          <Animated.View 
-            entering={FadeInDown.duration(800)} 
-            className="mx-6 mt-6 mb-10 bg-white rounded-[48px] p-8 flex-row items-center border border-gray-50"
+          <View className="mx-6 mt-6 mb-10 bg-white rounded-[48px] p-8 flex-row items-center border border-gray-50"
             style={LUMEN_SHADOW}
           >
             <TouchableOpacity 
@@ -154,7 +152,7 @@ export default function ProfileScreen() {
               activeOpacity={0.8}
               className="relative"
             >
-              <Animated.View entering={ZoomIn.delay(300).duration(600)} className="h-20 w-20 rounded-[32px] bg-blue-600 items-center justify-center shadow-lg shadow-blue-300 overflow-hidden">
+              <View className="h-20 w-20 rounded-[32px] bg-blue-600 items-center justify-center shadow-lg shadow-blue-300 overflow-hidden">
                 {profile?.profileImage ? (
                   <Image source={{ uri: profile.profileImage }} className="h-full w-full" />
                 ) : (
@@ -167,7 +165,7 @@ export default function ProfileScreen() {
                     <ActivityIndicator size="small" color="#fff" />
                   </View>
                 )}
-              </Animated.View>
+              </View>
               <View className="absolute -bottom-2 -right-2 h-8 w-8 bg-black rounded-full border-4 border-white items-center justify-center">
                  <Camera size={14} color="#fff" />
               </View>
@@ -191,7 +189,7 @@ export default function ProfileScreen() {
                 )}
               </View>
             </View>
-          </Animated.View>
+          </View>
 
           {/* Action Sections */}
           <MenuSection title="Personal">

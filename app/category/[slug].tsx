@@ -123,9 +123,8 @@ export default function CategoryScreen() {
             </View>
           ) : (
             services.map((svc, idx) => (
-              <Animated.View 
+              <View 
                 key={svc.id || svc.slug} 
-                entering={FadeInDown.delay(idx * 100).duration(500)}
               >
                 <TouchableOpacity 
                   onPress={() => router.push({
@@ -158,7 +157,7 @@ export default function CategoryScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              </Animated.View>
+               </View>
             ))
           )}
 

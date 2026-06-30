@@ -56,7 +56,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
       <Modal visible={visible} transparent animationType="fade">
         <Pressable style={styles.overlay} onPress={hideAlert}>
           {options && (
-            <Animated.View entering={FadeInDown} exiting={FadeOut} style={styles.content}>
+             <View style={styles.content}>
               <View style={[styles.iconBox, { backgroundColor: icon.bg }]}>
                 <Ionicons name={icon.name as any} size={40} color={icon.color} />
               </View>
@@ -79,7 +79,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
                   </Text>
                 </TouchableOpacity>
               </View>
-            </Animated.View>
+            </View>
           )}
         </Pressable>
       </Modal>

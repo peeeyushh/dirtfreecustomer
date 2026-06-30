@@ -131,7 +131,7 @@ export default function HomeScreen() {
 
       <SafeAreaView className="flex-1" edges={["top"]}>
         {/* Modern Header */}
-        <Animated.View style={headerStyle} className="flex-row items-center justify-between px-6 pt-2 pb-4">
+        <View className="flex-row items-center justify-between px-6 pt-2 pb-4">
           <View>
             <Text className="text-[10px] text-muted font-bold uppercase tracking-[3px] mb-1">Current Location</Text>
             <Pressable onPress={() => router.push("/location")} className="flex-row items-center gap-1">
@@ -155,17 +155,15 @@ export default function HomeScreen() {
                <Bell size={18} color="#000" />
              </Pressable>
           </View>
-        </Animated.View>
+        </View>
 
-        <Animated.ScrollView 
-          onScroll={onScroll}
-          scrollEventThrottle={16}
+        <ScrollView 
           showsVerticalScrollIndicator={false} 
           contentContainerStyle={{ paddingBottom: 120 }}
         >
           {/* Featured Hero Carousel */}
           {banners.length > 0 && (
-            <Animated.View entering={FadeInDown.delay(200)} className="px-6 mt-4">
+            <View className="px-6 mt-4">
               <View className="h-[240px] rounded-[40px] overflow-hidden relative" style={SOFT_SHADOW}>
                 <FlatList 
                   data={banners}
@@ -223,7 +221,7 @@ export default function HomeScreen() {
                   )}
                 />
               </View>
-            </Animated.View>
+            </View>
           )}
 
           {/* Categories Horizontal - Glass Circles */}
@@ -231,7 +229,7 @@ export default function HomeScreen() {
             <Text className="px-8 text-[12px] font-bold text-muted uppercase tracking-[3px] mb-6">Experience</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, gap: 20 }}>
               {categories.map((c, i) => (
-                <Animated.View key={c.id || c.slug} entering={FadeInRight.delay(i * 100)}>
+                <View key={c.id || c.slug}>
                   <Link href={{ pathname: '/category/[slug]', params: { slug: c.slug || c.label, name: c.label } }} asChild>
                     <Pressable className="items-center">
                       <View 
@@ -243,7 +241,7 @@ export default function HomeScreen() {
                       <Text className="text-[12px] font-bold text-black mt-3">{c.label}</Text>
                     </Pressable>
                   </Link>
-                </Animated.View>
+                </View>
               ))}
             </ScrollView>
           </View>
@@ -342,7 +340,7 @@ export default function HomeScreen() {
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, gap: 16 }}>
                 {services.map((s, i) => (
-                  <Animated.View key={s.id} entering={FadeInDown.delay(i * 100)}>
+                  <View key={s.id}>
                     <Link href={{ pathname: '/book/[id]', params: { id: s.slug || s.id || s.title } }} asChild>
                       <Pressable 
                         className="bg-white rounded-[32px] p-2 border border-gray-100" 
@@ -355,7 +353,7 @@ export default function HomeScreen() {
                         </View>
                       </Pressable>
                     </Link>
-                  </Animated.View>
+                  </View>
                 ))}
               </ScrollView>
             )}
@@ -375,7 +373,7 @@ export default function HomeScreen() {
                 </View>
               ) : (
                 professionals.map((pro, i) => (
-                  <Animated.View key={pro.id} entering={FadeInRight.delay(i * 100)}>
+                  <View key={pro.id}>
                     <Pressable 
                       className="bg-white rounded-[24px] p-4 border border-gray-50" 
                       style={[SOFT_SHADOW, { width: 220 }]}
@@ -393,7 +391,7 @@ export default function HomeScreen() {
                         <Text className="text-[11px] text-muted font-medium ml-2">{pro.exp || '5 yrs'} Exp</Text>
                       </View>
                     </Pressable>
-                  </Animated.View>
+                  </View>
                 ))
               )}
             </ScrollView>
@@ -423,7 +421,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-        </Animated.ScrollView>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );

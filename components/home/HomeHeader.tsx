@@ -64,7 +64,7 @@ export default function HomeHeader({ userLocation, topInset, isScrolled }: HomeH
       </View>
 
       {/* Search Row: Search Input + AI Button */}
-      <Animated.View entering={FadeInDown.delay(200)} style={styles.searchRow}>
+      <View style={styles.searchRow}>
         <TouchableOpacity style={styles.searchContainer} activeOpacity={1}>
           <Ionicons name="search-outline" size={20} color="#94a3b8" />
           <Text style={styles.searchPlaceholder}>Try 'deep cleaning tomorrow at 9am'</Text>
@@ -74,7 +74,7 @@ export default function HomeHeader({ userLocation, topInset, isScrolled }: HomeH
           <Ionicons name="sparkles" size={16} color="#fff" />
           <Text style={styles.aiText}>AI</Text>
         </TouchableOpacity>
-      </Animated.View>
+      </View>
     </View>
   );
 }

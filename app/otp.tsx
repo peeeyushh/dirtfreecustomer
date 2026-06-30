@@ -134,9 +134,7 @@ export default function OtpScreen() {
         className="flex-1"
       >
         {step === 'otp' ? (
-          <Animated.View 
-            entering={FadeInDown.duration(600)}
-            className="flex-1 px-8"
+          <View className="flex-1 px-8"
           >
             <TouchableOpacity 
               onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
@@ -190,19 +188,17 @@ export default function OtpScreen() {
                 </>
               )}
             </TouchableOpacity>
-          </Animated.View>
+          </View>
         ) : (
-          <Animated.View 
-            entering={FadeIn.duration(800)}
-            className="flex-1 items-center justify-center px-8"
+          <View className="flex-1 items-center justify-center px-8"
           >
-            <Animated.View entering={ZoomIn.duration(800).springify()} className="items-center">
+            <View className="items-center">
               <View className="h-24 w-24 rounded-full bg-success/20 items-center justify-center mb-8">
                 <ShieldCheck size={48} color="#22C58A" />
               </View>
               <Text className="text-white text-[32px] font-bold tracking-tight mb-3">Verified!</Text>
               <Text className="text-white/60 text-[16px] text-center">Your account is secured. Redirecting you...</Text>
-            </Animated.View>
+            </View>
             
             <View className="absolute bottom-10 left-8 right-8">
               <TouchableOpacity
@@ -214,7 +210,7 @@ export default function OtpScreen() {
                 <ChevronRight size={18} color="#0E1220" />
               </TouchableOpacity>
             </View>
-          </Animated.View>
+          </View>
         )}
       </KeyboardAvoidingView>
       <ErrorModal 

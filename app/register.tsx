@@ -86,7 +86,7 @@ export default function RegisterScreen() {
         >
           {/* Header Section */}
           <View className="px-8 pt-12 pb-8" style={{ marginTop: insets.top }}>
-            <Animated.View entering={FadeInUp.delay(200)}>
+            <View>
                <View className="flex-row items-center gap-2 mb-4">
                   <View className="h-px w-8 bg-blue-500" />
                   <Text className="text-blue-500 text-[10px] font-bold uppercase tracking-[4px]">Onboarding</Text>
@@ -97,12 +97,12 @@ export default function RegisterScreen() {
                <Text className="text-white/40 text-[16px] font-medium mt-4 leading-6">
                   Just a few details to personalize{'\n'}your DirtFree experience.
                </Text>
-            </Animated.View>
+            </View>
           </View>
 
           {/* Form Section */}
           <View className="px-8 space-y-6">
-            <Animated.View entering={FadeInUp.delay(400)}>
+            <View>
                <Text className="text-white/40 text-[10px] font-bold uppercase tracking-[2px] mb-3 ml-2">First Name</Text>
                <View className="flex-row items-center bg-white/5 rounded-[24px] h-[64px] px-6 border border-white/10">
                   <User size={18} color="rgba(255,255,255,0.4)" />
@@ -115,9 +115,9 @@ export default function RegisterScreen() {
                     selectionColor="#3B6BFF"
                   />
                </View>
-            </Animated.View>
+            </View>
 
-            <Animated.View entering={FadeInUp.delay(500)} className="mt-6">
+            <View className="mt-6">
                <Text className="text-white/40 text-[10px] font-bold uppercase tracking-[2px] mb-3 ml-2">Last Name (Optional)</Text>
                <View className="flex-row items-center bg-white/5 rounded-[24px] h-[64px] px-6 border border-white/10">
                   <User size={18} color="rgba(255,255,255,0.4)" />
@@ -130,9 +130,9 @@ export default function RegisterScreen() {
                     selectionColor="#3B6BFF"
                   />
                </View>
-            </Animated.View>
+            </View>
 
-            <Animated.View entering={FadeInUp.delay(600)} className="mt-6">
+            <View className="mt-6">
                <Text className="text-white/40 text-[10px] font-bold uppercase tracking-[2px] mb-3 ml-2">Email Address (Optional)</Text>
                <View className="flex-row items-center bg-white/5 rounded-[24px] h-[64px] px-6 border border-white/10">
                   <Mail size={18} color="rgba(255,255,255,0.4)" />
@@ -147,12 +147,12 @@ export default function RegisterScreen() {
                     selectionColor="#3B6BFF"
                   />
                </View>
-            </Animated.View>
+            </View>
           </View>
 
           {/* Bottom Button */}
           <View className="px-8 mt-12">
-            <Animated.View entering={FadeInUp.delay(800)}>
+            <View>
               <TouchableOpacity
                 onPress={handleSave}
                 activeOpacity={0.9}
@@ -171,15 +171,13 @@ export default function RegisterScreen() {
                   </>
                 )}
               </TouchableOpacity>
-            </Animated.View>
+            </View>
 
-            <Animated.View 
-              entering={FadeIn.delay(1000)}
-              className="mt-8 flex-row items-center justify-center gap-2"
+            <View className="mt-8 flex-row items-center justify-center gap-2"
             >
               <Sparkles size={14} color="rgba(255,255,255,0.3)" />
               <Text className="text-white/30 text-[12px] font-medium">Your data is safe and encrypted</Text>
-            </Animated.View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -7,20 +7,19 @@ import Animated, {
   withTiming, 
   withDelay,
   withSequence,
-  Easing,
-  interpolate
+  Easing
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
-const PRIMARY_GREEN = '#00b167';
+const PRIMARY_COLOR = '#0E1220'; // Matching DirtFree dark palette
 
 const Ripple = ({ delay }: { delay: number }) => {
   const scale = useSharedValue(0.8);
   const opacity = useSharedValue(0.6);
 
   useEffect(() => {
-    scale.value = withDelay(delay, withRepeat(withTiming(2.5, { duration: 3000, easing: Easing.out(Easing.ease) }), -1, false));
+    scale.value = withDelay(delay, withRepeat(withTiming(2.8, { duration: 3000, easing: Easing.out(Easing.ease) }), -1, false));
     opacity.value = withDelay(delay, withRepeat(withTiming(0, { duration: 3000, easing: Easing.out(Easing.ease) }), -1, false));
   }, []);
 
@@ -35,15 +34,15 @@ const Ripple = ({ delay }: { delay: number }) => {
 export default function LocationLoader() {
   const rotation = useSharedValue(0);
   const pinY = useSharedValue(0);
-  const mapScale = useSharedValue(1.1);
+  const mapScale = useSharedValue(1.15);
 
   useEffect(() => {
-    rotation.value = withRepeat(withTiming(360, { duration: 10000, easing: Easing.linear }), -1, false);
+    rotation.value = withRepeat(withTiming(360, { duration: 12000, easing: Easing.linear }), -1, false);
     pinY.value = withRepeat(withSequence(
-      withTiming(-15, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
-      withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+      withTiming(-18, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+      withTiming(0, { duration: 900, easing: Easing.inOut(Easing.ease) })
     ), -1, true);
-    mapScale.value = withRepeat(withTiming(1.3, { duration: 20000, easing: Easing.linear }), -1, true);
+    mapScale.value = withRepeat(withTiming(1.35, { duration: 25000, easing: Easing.linear }), -1, true);
   }, []);
 
   const rotatingStyle = useAnimatedStyle(() => ({
@@ -82,14 +81,14 @@ export default function LocationLoader() {
         {/* Central Pin */}
         <Animated.View style={[styles.pinWrapper, pinStyle]}>
           <View style={styles.pinCircle}>
-            <Ionicons name="location" size={40} color="white" />
+            <Ionicons name="location" size={38} color="white" />
           </View>
         </Animated.View>
 
         {/* Loading Text */}
         <View style={styles.textContainer}>
-          <Text style={styles.title}>Finding your location</Text>
-          <Text style={styles.subtitle}>Connecting you with the best cleaning experts nearby...</Text>
+          <Text style={styles.title}>Locating You</Text>
+          <Text style={styles.subtitle}>Fetching your live coordinates to check serviceable areas...</Text>
           
           <View style={styles.dotsRow}>
             {[0, 1, 2].map((i) => (
@@ -117,13 +116,13 @@ const Dot = ({ delay }: { delay: number }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#F7F7F8', // Matching bg color in tailwind config
     justifyContent: 'center',
     alignItems: 'center',
   },
   mapContainer: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.25,
+    opacity: 0.15,
   },
   mapImage: {
     width: '100%',
@@ -131,8 +130,8 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0f172a',
-    opacity: 0.4,
+    backgroundColor: '#F7F7F8',
+    opacity: 0.3,
   },
   content: {
     alignItems: 'center',
@@ -143,62 +142,62 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 2,
-    borderColor: PRIMARY_GREEN,
+    borderWidth: 1.5,
+    borderColor: 'rgba(14, 18, 32, 0.15)',
   },
   dashedCircle: {
     position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    borderWidth: 2,
-    borderColor: 'rgba(0, 177, 103, 0.4)',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 1.5,
+    borderColor: 'rgba(14, 18, 32, 0.2)',
     borderStyle: 'dashed',
   },
   pinWrapper: {
     zIndex: 10,
   },
   pinCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: PRIMARY_GREEN,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: PRIMARY_COLOR,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: PRIMARY_GREEN,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 15,
+    shadowColor: PRIMARY_COLOR,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
   },
   textContainer: {
-    marginTop: 60,
+    marginTop: 50,
     alignItems: 'center',
     paddingHorizontal: 40,
   },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
-    color: PRIMARY_GREEN,
+    color: PRIMARY_COLOR,
     textAlign: 'center',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
+    fontSize: 13,
+    color: '#6B7280',
     textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
+    marginTop: 6,
+    lineHeight: 18,
   },
   dotsRow: {
     flexDirection: 'row',
-    marginTop: 24,
+    marginTop: 20,
     gap: 6,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: PRIMARY_GREEN,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: PRIMARY_COLOR,
   },
 });

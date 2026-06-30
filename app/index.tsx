@@ -33,6 +33,8 @@ import { ChevronRight, Sparkles, ShieldCheck } from 'lucide-react-native';
 import { app, auth } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import ErrorModal from '../components/ErrorModal';
+import { useLocation } from '../context/LocationContext';
+import LocationLoader from '../components/LocationLoader';
 
 const LUMEN_SHADOW = { 
   shadowColor: "#000", 
@@ -49,15 +51,27 @@ export default function EntryScreen() {
   const { width, height } = useWindowDimensions();
 
   // Redirect logged-in users
+  const { address, refreshLocation, loading: loadingLocation } = useLocation();
+  const [isFetchingLocation, setIsFetchingLocation] = useState(true);
+
   useEffect(() => {
-    if (!loading && profile?.uid) {
+    async function initLocation() {
+      // Trigger location fetch on startup
+      await refreshLocation();
+      setIsFetchingLocation(false);
+    }
+    initLocation();
+  }, []);
+
+  useEffect(() => {
+    if (!loading && !isFetchingLocation && profile?.uid) {
       if (profile.firstName) {
         router.replace('/(tabs)');
       } else {
         router.replace('/register');
       }
     }
-  }, [profile, loading]);
+  }, [profile, loading, isFetchingLocation]);
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -108,6 +122,10 @@ export default function EntryScreen() {
     Linking.openURL(url);
   }, []);
 
+  if (isFetchingLocation) {
+    return <LocationLoader />;
+  }
+
   return (
     <View className="flex-1 bg-fg">
       <StatusBar style="light" />
@@ -132,7 +150,7 @@ export default function EntryScreen() {
           <View className="h-[50%] relative justify-end">
             
             <View className="absolute bottom-0 left-0 right-0 px-10 pb-12">
-              <Animated.View entering={FadeInUp.delay(300).duration(800)}>
+              <View>
                 <View className="flex-row items-center gap-2 mb-3">
                   <View className="h-px w-8 bg-success" />
                   <Text className="text-success text-[12px] font-bold uppercase tracking-[4px]">Premium Living</Text>
@@ -160,25 +178,19 @@ export default function EntryScreen() {
                 <Text className="text-white/60 text-[18px] font-medium mt-4 leading-7">
                   Elevate your home with{'\n'}professional, effortless cleaning.
                 </Text>
-              </Animated.View>
+              </View>
             </View>
 
-            {/* Decorative Sparkle */}
-            <Animated.View 
-              entering={FadeIn.delay(800)}
-              className="absolute top-20 right-10"
-            >
+            <View className="absolute top-20 right-10">
               <Animated.View style={glowStyle}>
                 <Sparkles size={32} color="#22C58A" />
               </Animated.View>
-            </Animated.View>
+            </View>
           </View>
 
           {/* Action Section */}
           <View className="flex-1 px-8 pt-4 pb-12 justify-center">
-            <Animated.View 
-              entering={FadeInUp.delay(500).duration(800)}
-              className="mb-8"
+            <View className="mb-8"
             >
               <View className="flex-row items-center justify-between mb-4 px-1">
                 <Text className="text-white/40 text-[11px] font-bold uppercase tracking-[2px]">Enter Phone Number</Text>
@@ -212,9 +224,9 @@ export default function EntryScreen() {
                   selectionColor="#22C58A"
                 />
               </View>
-            </Animated.View>
+            </View>
 
-            <Animated.View entering={FadeInUp.delay(700).duration(800)}>
+            <View>
               <TouchableOpacity
                 onPress={handleContinue}
                 activeOpacity={0.9}
@@ -233,11 +245,9 @@ export default function EntryScreen() {
                   </>
                 )}
               </TouchableOpacity>
-            </Animated.View>
+            </View>
 
-            <Animated.View 
-              entering={FadeIn.delay(1200)}
-              className="mt-12"
+            <View className="mt-12"
             >
               <Text className="text-white/20 text-[11px] text-center leading-5 px-6">
                 By tapping Get Started, you agree to our{' '}
@@ -245,7 +255,7 @@ export default function EntryScreen() {
                 {' '}and acknowledge our{' '}
                 <Text className="text-white/40 font-bold underline" onPress={() => openWebPage('https://dirtfree.com/privacy')}>Privacy Policy</Text>.
               </Text>
-            </Animated.View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

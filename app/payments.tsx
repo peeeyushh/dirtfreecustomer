@@ -143,7 +143,7 @@ export default function PaymentsScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
           >
             {/* Summary Card */}
-            <Animated.View entering={FadeInDown.duration(600)} className="mx-6 mb-8">
+            <View className="mx-6 mb-8">
               <View 
                 className="bg-[#0E1220] rounded-[36px] p-8 overflow-hidden"
                 style={LUMEN_SHADOW}
@@ -174,7 +174,7 @@ export default function PaymentsScreen() {
                   </View>
                 </View>
               </View>
-            </Animated.View>
+            </View>
 
             {/* Transaction List */}
             <View className="px-6">
@@ -189,9 +189,8 @@ export default function PaymentsScreen() {
                 </View>
               ) : (
                 payments.map((payment, index) => (
-                  <Animated.View 
+                  <View 
                     key={payment.id} 
-                    entering={FadeInDown.delay(index * 80).duration(500)}
                   >
                     <TouchableOpacity
                       onPress={() => setSelectedPayment(payment)}
@@ -223,7 +222,7 @@ export default function PaymentsScreen() {
                         <Text className="text-[10px] text-gray-400 font-bold mt-1">{formatDate(payment.date)}</Text>
                       </View>
                     </TouchableOpacity>
-                  </Animated.View>
+                  </View>
                 ))
               )}
             </View>
@@ -234,7 +233,7 @@ export default function PaymentsScreen() {
       {/* Receipt Modal */}
       <Modal visible={!!selectedPayment} transparent animationType="fade">
         <View className="flex-1 items-center justify-center bg-black/60 px-8">
-          <Animated.View entering={ZoomIn.duration(400)} className="bg-white rounded-[40px] p-8 w-full max-w-sm">
+          <View className="bg-white rounded-[40px] p-8 w-full max-w-sm">
             <View className="flex-row justify-between items-center mb-6">
               <Text className="text-[18px] font-black text-black">Receipt</Text>
               <TouchableOpacity onPress={() => setSelectedPayment(null)} className="h-8 w-8 rounded-full bg-gray-50 items-center justify-center">
@@ -285,7 +284,7 @@ export default function PaymentsScreen() {
               <Text className="text-white font-bold text-[15px]">View Booking Details</Text>
               <ChevronRight size={16} color="#fff" />
             </TouchableOpacity>
-          </Animated.View>
+          </View>
         </View>
       </Modal>
     </View>

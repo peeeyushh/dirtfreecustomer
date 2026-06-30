@@ -19,8 +19,11 @@ import {
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 const LUMEN_SHADOW = {
   shadowColor: "#000",
@@ -29,6 +32,50 @@ const LUMEN_SHADOW = {
   shadowOffset: { width: 0, height: 10 },
   elevation: 5,
 };
+
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Decode Google Maps encoded polyline string into array of lat/lng coordinates
+function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
+  const points: { latitude: number; longitude: number }[] = [];
+  let index = 0, lat = 0, lng = 0;
+
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lng += dlng;
+
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  }
+  return points;
+}
 
 export default function BookingsScreen() {
   const { user } = useAuth();
@@ -158,12 +205,12 @@ export default function BookingsScreen() {
               />
             ))
           ) : (
-            <Animated.View entering={FadeInUp} className="items-center mt-20 opacity-40">
+            <View className="items-center mt-20 opacity-40">
               <View className="h-20 w-20 rounded-full bg-gray-50 items-center justify-center border border-gray-100">
                 <Calendar size={32} color="#64748b" />
               </View>
               <Text className="text-[15px] font-bold text-muted mt-6 uppercase tracking-widest text-center">No {activeTab} Bookings Found</Text>
-            </Animated.View>
+            </View>
           )}
         </ScrollView>
       </SafeAreaView>
@@ -192,18 +239,33 @@ function ChatModal({ visible, onClose, booking }: any) {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      // Mark messages from other user as read
+      snapshot.docs.forEach(async (d) => {
+        const data = d.data();
+        if (data.senderId !== user?.uid && data.read === false) {
+          try {
+            await updateDoc(doc(db, 'bookings', booking.id, 'messages', d.id), {
+              read: true
+            });
+          } catch (err) {
+            console.error("Error marking message read by user:", err);
+          }
+        }
+      });
     });
 
     return unsubscribe;
-  }, [visible, booking?.id]);
+  }, [visible, booking?.id, user?.uid]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
     try {
       await addDoc(collection(db, 'bookings', booking.id, 'messages'), {
-        text: input,
+        text: input.trim(),
         senderId: user?.uid,
         senderName: user?.displayName || 'Customer',
+        read: false,
         createdAt: serverTimestamp()
       });
       setInput('');
@@ -278,10 +340,127 @@ const ALL_ADDONS_LOOKUP: Record<string, { label: string; price: number }> = {
 };
 
 function BookingCard({ booking, index, onOpenChat }: any) {
+  const { user } = useAuth();
   const [expanded, setExpanded] = useState(index === 0);
   const statusStr = (booking?.status || '').toLowerCase();
   const isCompleted = statusStr === 'completed' || statusStr === 'done';
   const isCancelled = statusStr === 'cancelled';
+
+  const [partnerLocation, setPartnerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!booking.id || isCompleted || isCancelled || !user?.uid) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'bookings', booking.id, 'messages')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const count = snapshot.docs.filter(d => {
+        const data = d.data();
+        return data.senderId !== user.uid && data.read === false;
+      }).length;
+      setUnreadCount(count);
+    });
+
+    return unsub;
+  }, [booking.id, isCompleted, isCancelled, user?.uid]);
+
+  useEffect(() => {
+    if (!booking.workerId || isCompleted || isCancelled) {
+      setPartnerLocation(null);
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'partners', booking.workerId), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.latitude && data.longitude) {
+          setPartnerLocation({
+            latitude: data.latitude,
+            longitude: data.longitude
+          });
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [booking.workerId, isCompleted, isCancelled]);
+
+  const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Dynamically geocode customer address if booking doesn't have coordinates
+  useEffect(() => {
+    if (booking.location?.lat && booking.location?.lng) {
+      setCustomerCoords({
+        latitude: booking.location.lat,
+        longitude: booking.location.lng
+      });
+      return;
+    }
+
+    const geocodeAddress = async () => {
+      const addr = booking.userAddress || booking.address;
+      if (!addr) return;
+      try {
+        const results = await Location.geocodeAsync(addr);
+        if (results.length > 0) {
+          setCustomerCoords({
+            latitude: results[0].latitude,
+            longitude: results[0].longitude
+          });
+        }
+      } catch (e) {
+        console.warn("Geocoding failed inside BookingCard:", e);
+      }
+    };
+    geocodeAddress();
+  }, [booking.location, booking.userAddress, booking.address]);
+
+  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
+  const [routeEta, setRouteEta] = useState<string | null>(null);
+
+  // Fetch shortest route via Google Maps Directions API (same engine as Google Maps app)
+  useEffect(() => {
+    if (!partnerLocation || !customerCoords) {
+      setRouteCoordinates([]);
+      setRouteEta(null);
+      return;
+    }
+
+    const fetchRoute = async () => {
+      try {
+        // Use 'bike' profile for shortest urban routes instead of 'driving'
+        const url = `http://router.project-osrm.org/route/v1/bike/${partnerLocation.longitude},${partnerLocation.latitude};${customerCoords.longitude},${customerCoords.latitude}?overview=full`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          // Decode OSRM encoded polyline
+          const geometry = data.routes[0].geometry;
+          const decoded = decodePolyline(geometry);
+          setRouteCoordinates(decoded);
+          
+          // Calculate realistic city ETA based on 25 km/h average speed
+          const distanceInKm = data.routes[0].distance / 1000;
+          const durationMins = Math.ceil((distanceInKm / 25) * 60);
+          setRouteEta(`${durationMins} mins`);
+        } else {
+          // Fallback to straight line
+          setRouteCoordinates([partnerLocation, customerCoords]);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch OSRM route:", e);
+        setRouteCoordinates([partnerLocation, customerCoords]);
+      }
+    };
+
+    fetchRoute();
+  }, [partnerLocation, customerCoords]);
 
   // Aggressive support for both new top-level schema and legacy nested/different field schemas
   const serviceName = 
@@ -312,8 +491,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
 
   return (
     <View className="mb-6">
-      <Animated.View 
-        entering={FadeInDown.delay(index * 100).duration(800)}
+      <View
         className="bg-white rounded-[40px] overflow-hidden border border-gray-50"
         style={LUMEN_SHADOW}
       >
@@ -363,7 +541,7 @@ function BookingCard({ booking, index, onOpenChat }: any) {
         </Pressable>
 
         {expanded && (
-          <Animated.View entering={FadeInDown.duration(400)} className="px-4 pb-6">
+          <View className="px-4 pb-6">
             {/* Selected Add-ons Section */}
             {selectedAddons && selectedAddons.length > 0 && (
               <View className="mb-5 bg-gray-50 rounded-[28px] p-5 border border-gray-100">
@@ -426,10 +604,15 @@ function BookingCard({ booking, index, onOpenChat }: any) {
                   <View className="flex-row gap-2">
                     <Pressable 
                       onPress={() => onOpenChat(booking)}
-                      className="h-10 w-10 rounded-full bg-white items-center justify-center border border-gray-100" 
+                      className="h-10 w-10 rounded-full bg-white items-center justify-center border border-gray-100 relative" 
                       style={LUMEN_SHADOW}
                     >
                       <MessageSquare size={18} color="#000" />
+                      {unreadCount > 0 && (
+                        <View className="absolute -top-1 -right-1 bg-red-500 rounded-full h-5 min-w-[20px] px-1.5 items-center justify-center border border-white">
+                          <Text className="text-white text-[9px] font-extrabold">{unreadCount}</Text>
+                        </View>
+                      )}
                     </Pressable>
                     <Pressable 
                       onPress={async () => {
@@ -480,9 +663,83 @@ function BookingCard({ booking, index, onOpenChat }: any) {
                 </View>
               </View>
             ) : null}
-          </Animated.View>
+
+            {/* Real-time Tracking Map (Swiggy-style) - Only visible when partner starts journey (status is 'on_the_way') */}
+            {statusStr === 'on_the_way' && booking.workerId && (
+              <View className="mt-5 rounded-[32px] overflow-hidden border border-gray-100 shadow-sm" style={{ height: 220 }}>
+                {(customerCoords || partnerLocation) ? (
+                  <MapView
+                    style={{ flex: 1 }}
+                    provider={PROVIDER_DEFAULT}
+                    initialRegion={{
+                      latitude: customerCoords?.latitude || partnerLocation?.latitude || 22.7196,
+                      longitude: customerCoords?.longitude || partnerLocation?.longitude || 75.8577,
+                      latitudeDelta: 0.05,
+                      longitudeDelta: 0.05,
+                    }}
+                  >
+                  {/* Customer Marker (Aesthetic Home) */}
+                  {customerCoords && (
+                    <Marker
+                      coordinate={customerCoords}
+                      title="Your Home"
+                      description="Cleaning destination"
+                    >
+                      <View className="h-9 w-9 bg-[#3B6BFF] rounded-full items-center justify-center border-2 border-white shadow-lg">
+                        <Ionicons name="home" size={15} color="#fff" />
+                      </View>
+                    </Marker>
+                  )}
+
+                  {/* Partner Live Marker (Dirtfree Sparkle Logo) */}
+                  {partnerLocation && (
+                    <Marker
+                      coordinate={partnerLocation}
+                      title={booking.workerName || "Partner"}
+                      description="Dirtfree Partner on the way"
+                    >
+                      <View className="h-10 w-10 bg-[#006D44] rounded-full items-center justify-center border-2 border-white shadow-xl">
+                        <Ionicons name="sparkles" size={17} color="#FBBF24" />
+                      </View>
+                    </Marker>
+                  )}
+                  {/* Route Polyline (Uber-style solid line via actual roads) */}
+                  {/* Underlay glow */}
+                  {routeCoordinates.length > 0 && (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="rgba(59, 107, 255, 0.25)"
+                      strokeWidth={8}
+                    />
+                  )}
+                  {/* Foreground solid route */}
+                  {routeCoordinates.length > 0 && (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="#3B6BFF"
+                      strokeWidth={4}
+                    />
+                  )}
+                    </MapView>
+                  ) : (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9fafb' }}>
+                      <ActivityIndicator color="#3B6BFF" />
+                    </View>
+                  )}
+                {/* Distance + ETA Badge Overlay */}
+                {partnerLocation && customerCoords && (
+                  <View className="absolute top-3 left-3 bg-black/90 px-4 py-2 rounded-2xl shadow flex-row items-center" style={{ gap: 8 }}>
+                    <Ionicons name="navigate" size={14} color="#3B6BFF" />
+                    <Text className="text-white text-[11px] font-bold uppercase tracking-wider">
+                      {getDistanceKm(partnerLocation.latitude, partnerLocation.longitude, customerCoords.latitude, customerCoords.longitude).toFixed(1)} km{routeEta ? ` • ${routeEta}` : ''}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 }
